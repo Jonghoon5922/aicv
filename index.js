@@ -19,8 +19,46 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
+const https = require("https");
+const http = require("http");
 const readline = require("readline");
 const { buildEvidence, SCHEMA_VERSION } = require("./evidence.js");
+
+// ── 포탈 연동 설정 ──────────────────────────────────────────
+function arg(name) {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
+const TOKEN = arg("--token") || process.env.AICV_TOKEN || "";
+const SERVER = (arg("--server") || process.env.AICV_SERVER || "https://aicv.my").replace(/\/$/, "");
+
+function request(method, urlPath, body) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(SERVER + urlPath);
+    const mod = url.protocol === "http:" ? http : https;
+    const data = body ? JSON.stringify(body) : null;
+    const req = mod.request(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Upload-Token": TOKEN,
+        ...(data ? { "Content-Length": Buffer.byteLength(data) } : {}),
+      },
+      timeout: 30000,
+    }, (res) => {
+      let buf = "";
+      res.on("data", (c) => (buf += c));
+      res.on("end", () => {
+        try { resolve({ status: res.statusCode, json: JSON.parse(buf || "{}") }); }
+        catch { resolve({ status: res.statusCode, json: {} }); }
+      });
+    });
+    req.on("error", reject);
+    req.on("timeout", () => req.destroy(new Error("timeout")));
+    if (data) req.write(data);
+    req.end();
+  });
+}
 
 function log(msg) { process.stderr.write("[aicv] " + msg + "\n"); }
 
@@ -103,6 +141,21 @@ const TOOLS = [
       required: ["markdown"],
     },
   },
+  {
+    name: "publish_aicv",
+    description:
+      "증거 팩(자동 재수집)과 선택적으로 완성 이력서를 AICV 포탈에 업로드해 공개 프로필을 갱신합니다. " +
+      "업로드 토큰(--token 또는 AICV_TOKEN)이 필요합니다 — 포탈에서 발급. " +
+      "프라이버시: 실경로가 포함된 팩(reveal_projects)은 서버가 거부하므로 항상 별칭 팩만 전송됩니다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        days: { type: "integer", description: "집계 기간(일, 기본 90)", minimum: 7, maximum: 365 },
+        markdown: { type: "string", description: "함께 올릴 완성 이력서 본문(선택)" },
+        format: { type: "string", enum: ["full", "career", "skills", "github"], description: "이력서 양식(기본 full)" },
+      },
+    },
+  },
 ];
 
 // ── 프롬프트 정의 ───────────────────────────────────────────
@@ -142,6 +195,28 @@ function runCollect(args) {
       pack.volume.total_tokens.toLocaleString() + " tok, git 커밋 " +
       (pack.git.totals ? pack.git.totals.commits : 0) + "건)");
   return JSON.stringify(pack);
+}
+
+async function runPublish(args) {
+  if (!TOKEN) return "업로드 토큰이 없습니다 — 포탈(" + SERVER + ")에서 발급 후 --token 또는 AICV_TOKEN을 설정하세요.";
+  args = args || {};
+  // 서버에는 항상 별칭 팩만 (reveal_projects 강제 해제)
+  const pack = buildEvidence({ days: args.days, reveal_projects: false });
+  const results = [];
+  try {
+    const r = await request("POST", "/api/evidence", pack);
+    results.push(r.status === 200
+      ? "증거 팩 업로드 완료 (" + r.json.date + ")" + (r.json.profile ? " → " + SERVER + r.json.profile : "")
+      : "증거 팩 업로드 실패 (HTTP " + r.status + (r.json.detail ? " — " + r.json.detail : "") + ")");
+  } catch (e) { results.push("증거 팩 업로드 실패 (" + e.message + ")"); }
+  if (args.markdown) {
+    try {
+      const r = await request("POST", "/api/resume", { format: args.format || "full", markdown: args.markdown });
+      results.push(r.status === 200 ? "이력서(" + (args.format || "full") + ") 업로드 완료"
+        : "이력서 업로드 실패 (HTTP " + r.status + (r.json.detail ? " — " + r.json.detail : "") + ")");
+    } catch (e) { results.push("이력서 업로드 실패 (" + e.message + ")"); }
+  }
+  return results.join("\n");
 }
 
 function runSave(args) {
@@ -188,6 +263,7 @@ async function handle(msg) {
     try {
       if (name === "collect_ai_evidence") text = runCollect(args);
       else if (name === "save_ai_resume") text = runSave(args);
+      else if (name === "publish_aicv") text = await runPublish(args);
       else return replyErr(id, -32602, "unknown tool: " + name);
     } catch (e) {
       return reply(id, { content: [{ type: "text", text: "오류: " + e.message }], isError: true });

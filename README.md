@@ -33,10 +33,26 @@ claude mcp add aicv -- node <이 레포 경로>/index.js
 - 프로젝트 경로는 기본 별칭+해시. `reveal_projects=true`로 명시 동의 시에만 실경로.
 - 계정 이메일은 해시만.
 
+## 포탈 (공개 프로필)
+
+포탈에 가입해 업로드 토큰을 발급받으면, 대화에서 "포탈에 올려줘"(`publish_aicv` 도구)로
+증거 팩·이력서가 업로드되고 `/r/<핸들>` 공개 프로필이 갱신됩니다.
+
+```bash
+claude mcp add aicv -- node <레포 경로>/index.js --token acv_...
+```
+
+- 로그인: 이메일/비밀번호 또는 구글 (`GOOGLE_CLIENT_ID` 설정 시, `AUTH_GOOGLE_ONLY=1` 지원)
+- 프로필은 기본 비공개 — 핸들 설정 후 공개 선택
+- 서버는 실경로 포함 팩을 거부합니다
+
+서버 실행: `pip install -r server/requirements.txt && uvicorn server.main:app --port 8100`
+(또는 Containerfile — main 푸시 시 ghcr.io 이미지 자동 빌드)
+
 ## 문서
 
 - [증거 팩 스키마 v1](docs/SCHEMA.md) — 블록 구조·rubric 산식·버전 정책
-- [포탈 설계](docs/PORTAL.md) — 2단계: 공개 프로필 페이지 (`/r/<핸들>`)
+- [포탈 설계](docs/PORTAL.md) — 공개 프로필 페이지 (`/r/<핸들>`)
 - [생성 예시](examples/AICV.md)
 
 ## 예시 (rubric 5축, 규칙 기반 0~100)

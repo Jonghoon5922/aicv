@@ -30,7 +30,7 @@ function arg(name) {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 const TOKEN = arg("--token") || process.env.AICV_TOKEN || "";
-const SERVER = (arg("--server") || process.env.AICV_SERVER || "https://aicv.my").replace(/\/$/, "");
+const SERVER = (arg("--server") || process.env.AICV_SERVER || "https://aicv.tokenbill.my").replace(/\/$/, "");
 
 function request(method, urlPath, body) {
   return new Promise((resolve, reject) => {

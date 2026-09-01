@@ -1,0 +1,208 @@
+#!/usr/bin/env node
+/**
+ * AICV — AI 활용 능력 이력서 MCP 서버
+ *
+ * 로컬 AI CLI 로그(~/.claude, ~/.codex, ~/.gemini)를 스캔해 "증거 팩"
+ * (집계값·이름표만, 원문 없음)을 만들고, 이력서 문장은 호스트 LLM이 쓴다.
+ * 실행할 때마다 스냅샷이 ~/.aicv/history 에 쌓여 성장 델타(growth)가 나온다
+ * — 한 번 쓰고 버리는 문서가 아니라 지속 업데이트되는 이력서.
+ *
+ * 도구:
+ *   collect_ai_evidence  증거 팩 JSON 생성 (로컬 전용, 네트워크 없음)
+ *   save_ai_resume       호스트가 작성한 이력서를 양식별 파일로 저장
+ * 프롬프트:
+ *   aicv                 수집→작성→저장 전 과정을 안내하는 템플릿
+ *
+ * 등록 예:
+ *   claude mcp add aicv -- node <이 파일 경로>
+ */
+"use strict";
+const fs = require("fs");
+const path = require("path");
+const readline = require("readline");
+const { buildEvidence, SCHEMA_VERSION } = require("./evidence.js");
+
+function log(msg) { process.stderr.write("[aicv] " + msg + "\n"); }
+
+// ── 출력 양식 — 실제 채용 시장에서 쓰이는 4종 ──────────────
+const FORMATS = {
+  full: {
+    file: "AICV.md",
+    guide: [
+      "상세 리포트(전체 이력서). 구성:",
+      "- 한 줄 요약 (가장 강한 신호 1~2개)",
+      "- 핵심 역량 4~6개 불릿 — 각각 증거 팩 수치 인용",
+      "- 역량 프로파일 — rubric 5축 점수 표 (점수 수정 금지)",
+      "- 성장 추이 — growth가 있으면 이전 대비 델타 명시",
+      "- 산출물 — git.totals가 있으면 커밋·라인 수 인용",
+      "- 활용 스택·도구 환경",
+      "- 데이터 출처와 한계 (caveats 요약)",
+    ].join("\n"),
+  },
+  career: {
+    file: "AICV-career.md",
+    guide: [
+      "경력기술서 첨부용 'AI 활용 역량' 섹션 (1페이지 내, 붙여넣기 용도).",
+      "- 제목: ## AI 활용 역량",
+      "- 4~6개 불릿, 각 불릿은 '역량 → 구체 사례/수치 → 결과' 구조",
+      "- 도구 나열 금지. '어떻게 쓰는가'(자동화·위임·검증)를 수치로",
+      "- 문체는 경력기술서 톤(명사형 종결)으로",
+    ].join("\n"),
+  },
+  skills: {
+    file: "AICV-skills.md",
+    guide: [
+      "이력서 스킬 섹션·링크드인·원티드용 'AI & Data Skills' 항목 목록.",
+      "- 각 항목은 한 줄: 스킬명 — 구체 용례 + 수치 (예: 'AI 워크플로 자동화 — 커스텀 스킬 N종 작성, N회 실전 투입')",
+      "- 5~8줄, 복사해서 바로 붙일 수 있게",
+      "- '~에 능숙' 같은 모호한 표현 금지",
+    ].join("\n"),
+  },
+  github: {
+    file: "AICV-github.md",
+    guide: [
+      "GitHub 프로필 README·노션 포트폴리오용 섹션.",
+      "- 제목 + 표 형식의 핵심 지표 (rubric 5축, 토큰·세션·커밋)",
+      "- shields.io 스타일 배지 마크다운 3~4개 (예: AI_Verification-96%2F100-brightgreen)",
+      "- 캐주얼하되 수치는 정확히",
+    ].join("\n"),
+  },
+};
+
+// ── 도구 정의 ───────────────────────────────────────────────
+const TOOLS = [
+  {
+    name: "collect_ai_evidence",
+    description:
+      "로컬 AI CLI 사용 로그(Claude Code·Codex·Gemini)를 스캔해 'AI 활용 능력 증거 팩'(구조화 JSON)을 만듭니다. " +
+      "대화 원문·파일 내용은 포함하지 않으며 집계값과 이름표만 담습니다. 네트워크 접근 없음. " +
+      "git 커밋 이력과 이전 스냅샷 대비 성장 델타(growth)도 포함됩니다. " +
+      "이 결과를 바탕으로 호스트(당신)가 이력서 문장을 작성하세요. rubric 점수는 규칙 기반으로 이미 계산되어 있으니 수정하지 말고 인용만 하세요.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        days: { type: "integer", description: "집계 기간(일). 기본 90, 범위 7~365", minimum: 7, maximum: 365 },
+        reveal_projects: { type: "boolean", description: "true면 프로젝트 실제 경로 포함(기본 false: 별칭+해시만). 경로에 회사·고객사명이 있을 수 있으니 사용자 동의 후에만." },
+        include_git: { type: "boolean", description: "git 커밋 이력 수집 여부(기본 true)" },
+      },
+    },
+  },
+  {
+    name: "save_ai_resume",
+    description:
+      "작성 완료된 AI 활용 능력 이력서(markdown)를 양식별 파일로 저장합니다. " +
+      "format: full(상세 리포트)|career(경력기술서 섹션)|skills(스킬 목록)|github(프로필 README 섹션). " +
+      "기본 저장 경로는 현재 디렉터리의 AICV*.md.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        markdown: { type: "string", description: "이력서 전체 본문(markdown)" },
+        format: { type: "string", enum: ["full", "career", "skills", "github"], description: "양식(기본 full) — 기본 파일명 결정에 사용" },
+        file_path: { type: "string", description: "저장 경로(선택). 지정 시 format 기본 파일명 대신 사용" },
+      },
+      required: ["markdown"],
+    },
+  },
+];
+
+// ── 프롬프트 정의 ───────────────────────────────────────────
+const PROMPTS = [
+  {
+    name: "aicv",
+    description: "로컬 AI 사용 이력을 근거로 'AI 활용 능력 이력서'를 작성·갱신합니다.",
+    arguments: [
+      { name: "format", description: "full|career|skills|github (기본 full)", required: false },
+      { name: "days", description: "집계 기간(일, 기본 90)", required: false },
+      { name: "language", description: "작성 언어(기본: 한국어)", required: false },
+    ],
+  },
+];
+
+function promptText(format, days, language) {
+  const f = FORMATS[format] || FORMATS.full;
+  return [
+    "AI 활용 능력 이력서를 작성해줘. 절차:",
+    "",
+    "1. collect_ai_evidence 도구를 호출해 (days=" + (days || 90) + ") 증거 팩을 받아.",
+    "2. 증거 팩만을 근거로 " + (language || "한국어") + "로 아래 양식에 맞춰 작성해:",
+    f.guide,
+    "3. 공통 규칙:",
+    "   - 증거 팩에 없는 사실을 지어내지 마. 모든 주장에는 수치 근거를 붙여.",
+    "   - 토큰량 자체보다 '어떻게 쓰는가'(확장·위임·검증 습관)를 강조해.",
+    "   - highlights의 사실 카드를 우선 활용하고, growth가 있으면 성장 스토리로 연결해.",
+    "4. 사용자에게 초안을 보여주고, 확정되면 save_ai_resume(format=\"" + (format || "full") + "\")로 저장해.",
+  ].join("\n");
+}
+
+// ── 도구 실행 ───────────────────────────────────────────────
+function runCollect(args) {
+  const t0 = Date.now();
+  const pack = buildEvidence(args || {});
+  log("증거 팩 생성 (" + (Date.now() - t0) + "ms, " +
+      pack.volume.total_tokens.toLocaleString() + " tok, git 커밋 " +
+      (pack.git.totals ? pack.git.totals.commits : 0) + "건)");
+  return JSON.stringify(pack);
+}
+
+function runSave(args) {
+  if (!args || typeof args.markdown !== "string" || !args.markdown.trim()) {
+    throw new Error("markdown 본문이 비어 있습니다.");
+  }
+  const f = FORMATS[args.format] || FORMATS.full;
+  const fp = path.resolve(args.file_path || path.join(process.cwd(), f.file));
+  fs.mkdirSync(path.dirname(fp), { recursive: true });
+  fs.writeFileSync(fp, args.markdown, "utf8");
+  return "저장 완료: " + fp + " (" + Buffer.byteLength(args.markdown) + " bytes)";
+}
+
+// ── MCP (stdio, 개행 구분 JSON-RPC) ────────────────────────
+function reply(id, result) { process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\n"); }
+function replyErr(id, code, message) { process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, error: { code, message } }) + "\n"); }
+
+async function handle(msg) {
+  const { id, method, params } = msg;
+  if (method === "initialize") {
+    return reply(id, {
+      protocolVersion: (params && params.protocolVersion) || "2024-11-05",
+      capabilities: { tools: {}, prompts: {} },
+      serverInfo: { name: "aicv", version: "0.2.0", schema_version: SCHEMA_VERSION },
+    });
+  }
+  if (method && method.startsWith("notifications/")) return;
+  if (method === "ping") return reply(id, {});
+  if (method === "tools/list") return reply(id, { tools: TOOLS });
+  if (method === "prompts/list") return reply(id, { prompts: PROMPTS });
+  if (method === "prompts/get") {
+    const name = params && params.name;
+    if (name !== "aicv") return replyErr(id, -32602, "unknown prompt: " + name);
+    const a = (params && params.arguments) || {};
+    return reply(id, {
+      description: PROMPTS[0].description,
+      messages: [{ role: "user", content: { type: "text", text: promptText(a.format, a.days, a.language) } }],
+    });
+  }
+  if (method === "tools/call") {
+    const name = params && params.name;
+    const args = (params && params.arguments) || {};
+    let text;
+    try {
+      if (name === "collect_ai_evidence") text = runCollect(args);
+      else if (name === "save_ai_resume") text = runSave(args);
+      else return replyErr(id, -32602, "unknown tool: " + name);
+    } catch (e) {
+      return reply(id, { content: [{ type: "text", text: "오류: " + e.message }], isError: true });
+    }
+    return reply(id, { content: [{ type: "text", text }] });
+  }
+  if (id !== undefined) return replyErr(id, -32601, "method not found: " + method);
+}
+
+const rl = readline.createInterface({ input: process.stdin, terminal: false });
+rl.on("line", (line) => {
+  if (!line.trim()) return;
+  let msg;
+  try { msg = JSON.parse(line); } catch { return; }
+  handle(msg).catch((e) => { if (msg.id !== undefined) replyErr(msg.id, -32603, e.message); });
+});
+rl.on("close", () => process.exit(0));
+log("AICV MCP 서버 시작 (schema v" + SCHEMA_VERSION + ")");

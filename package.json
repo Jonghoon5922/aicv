@@ -1,0 +1,10 @@
+{
+  "name": "aicv",
+  "version": "0.2.0",
+  "description": "AICV — 로컬 AI CLI 사용 로그로 'AI 활용 능력 이력서'를 만드는 MCP 서버. 실제 작업 로그가 역량을 증명합니다.",
+  "bin": { "aicv-mcp": "./index.js" },
+  "main": "evidence.js",
+  "engines": { "node": ">=18" },
+  "keywords": ["mcp", "ai", "resume", "claude-code", "portfolio"],
+  "license": "MIT"
+}

@@ -58,14 +58,13 @@ a{color:#7aa2ff}
 <div id="dash" class="hide">
   <div class="card">
     <h3 style="margin-top:0">1. MCP 설치</h3>
-    <div class="step"><b>①</b><span>레포 클론: <code>git clone https://github.com/Jonghoon5922/aicv</code></span></div>
-    <div class="step"><b>②</b><span>사용하는 AI 도구를 선택해 등록:</span></div>
+    <div class="step"><b>①</b><span>사용하는 AI 도구를 선택해 아래 한 줄 실행 (Node 18+ 필요):</span></div>
     <div style="margin:6px 0">
       <button class="tool-tab" data-tool="claude" onclick="pickTool('claude')">Claude Code</button>
       <button class="tool-tab ghost" data-tool="codex" onclick="pickTool('codex')">Codex CLI</button>
       <button class="tool-tab ghost" data-tool="gemini" onclick="pickTool('gemini')">Gemini CLI</button>
     </div>
-    <pre id="installCmd">claude mcp add aicv -- node &lt;클론 경로&gt;/index.js</pre>
+    <pre id="installCmd">claude mcp add aicv -- npx -y github:Jonghoon5922/aicv</pre>
     <p class="mut">그 외 MCP 지원 도구(Cursor 등)도 stdio 서버 등록 방식으로 사용할 수 있습니다.</p>
   </div>
 
@@ -78,7 +77,7 @@ a{color:#7aa2ff}
     <details style="margin-top:12px"><summary class="mut" style="cursor:pointer">고급: 토큰 직접 등록</summary>
       <pre id="tokenBox">아직 발급 전</pre>
       <button class="ghost" onclick="issueToken()">토큰 발급/재발급</button>
-      <p class="mut">등록: <code id="mcpCmd">claude mcp add aicv -- node &lt;경로&gt;/index.js --token ...</code></p>
+      <p class="mut">등록: <code id="mcpCmd">claude mcp add aicv -- npx -y github:Jonghoon5922/aicv --token ...</code></p>
     </details>
   </div>
 
@@ -167,16 +166,16 @@ async function loadMe() {
 function renderToken(t) {
   $("tokenBox").textContent = t;
   $("mcpCmd").textContent =
-    "claude mcp add aicv -- node <클론 경로>/index.js --token " + t;
+    "claude mcp add aicv -- npx -y github:Jonghoon5922/aicv --token " + t;
 }
 async function issueToken() {
   const j = await api("/api/uploader/token", {method: "POST"});
   renderToken(j.upload_token);
 }
 const INSTALL_CMDS = {
-  claude: "claude mcp add aicv -- node <클론 경로>/index.js",
-  codex:  "codex mcp add aicv -- node <클론 경로>/index.js",
-  gemini: "gemini mcp add aicv node <클론 경로>/index.js",
+  claude: "claude mcp add aicv -- npx -y github:Jonghoon5922/aicv",
+  codex:  "codex mcp add aicv -- npx -y github:Jonghoon5922/aicv",
+  gemini: "gemini mcp add aicv npx -y github:Jonghoon5922/aicv",
 };
 function pickTool(t) {
   $("installCmd").textContent = INSTALL_CMDS[t];

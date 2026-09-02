@@ -11,11 +11,12 @@
 **1. MCP 설치**
 
 ```bash
-git clone https://github.com/Jonghoon5922/aicv
-claude mcp add aicv -- node ./aicv/index.js
+claude mcp add aicv -- npx -y github:Jonghoon5922/aicv
 ```
 
-Codex CLI는 `codex mcp add aicv -- node ./aicv/index.js`, Gemini CLI 등 MCP 지원 도구도 같은 방식.
+Node 18+만 있으면 됩니다 (clone 불필요 — npx가 받아서 실행하고, 업데이트도 자동).
+Codex CLI는 `codex mcp add aicv -- npx -y github:Jonghoon5922/aicv`,
+Gemini CLI는 `gemini mcp add aicv npx -y github:Jonghoon5922/aicv`.
 
 **2. 계정 연결** — [aicv.tokenbill.my](https://aicv.tokenbill.my) 구글 로그인 → **연결 코드 발급** → 새 AI 세션에서:
 

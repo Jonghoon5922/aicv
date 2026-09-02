@@ -249,14 +249,14 @@ def update_me(body: MeIn, user: User = Depends(current_user), db: Session = Depe
     if body.handle is not None:
         h = body.handle.lower()
         if not HANDLE_RE.match(h) or h in RESERVED:
-            raise HTTPException(400, "핸들은 3~30자 영소문자·숫자·하이픈만 가능합니다")
+            raise HTTPException(400, "토큰명은 3~30자 영소문자·숫자·하이픈만 가능합니다")
         taken = db.query(User).filter(User.handle == h, User.id != user.id).first()
         if taken:
-            raise HTTPException(409, "이미 사용 중인 핸들입니다")
+            raise HTTPException(409, "이미 사용 중인 토큰명입니다")
         user.handle = h
     if body.is_public is not None:
         if body.is_public and not user.handle:
-            raise HTTPException(400, "공개하려면 먼저 핸들을 설정하세요")
+            raise HTTPException(400, "공개하려면 먼저 토큰명을 설정하세요")
         user.is_public = body.is_public
     db.commit()
     return {"handle": user.handle, "is_public": user.is_public}
@@ -300,13 +300,13 @@ def pair_claim(body: PairClaimIn, db: Session = Depends(get_db)):
 
 @app.get("/api/handle/check")
 def handle_check(handle: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
-    """핸들 실시간 중복 확인 — 대시보드 입력 중 피드백용."""
+    """토큰명 실시간 중복 확인 — 대시보드 입력 중 피드백용."""
     h = handle.lower().strip()
     if not HANDLE_RE.match(h) or h in RESERVED:
         return {"available": False, "reason": "형식 오류 — 영소문자·숫자·하이픈 3~30자"}
     taken = db.query(User).filter(User.handle == h, User.id != user.id).first()
     if taken:
-        return {"available": False, "reason": "이미 사용 중입니다"}
+        return {"available": False, "reason": "이미 사용 중인 토큰명입니다"}
     return {"available": True, "reason": "사용 가능"}
 
 

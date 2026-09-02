@@ -278,7 +278,7 @@ async function runConnect(args) {
     if (r.status !== 200) return "연결 실패 (HTTP " + r.status + (r.json.detail ? " — " + r.json.detail : "") + ")";
     TOKEN = r.json.upload_token;
     saveCredToken(TOKEN);
-    return "✅ 연결 완료 — 계정: " + (r.json.handle || "(핸들 미설정)") +
+    return "✅ 연결 완료 — 계정: " + (r.json.handle || "(토큰명 미설정)") +
       " · 프로필 " + (r.json.visibility === "public" ? "공개" : "비공개") + " 상태\n" +
       "이제 \"포탈에 올려줘\"라고만 하면 됩니다.";
   } catch (e) { return "연결 실패 (" + e.message + ")"; }
@@ -318,7 +318,7 @@ async function runPublish(args) {
   } else if (visibility === "private") {
     results.push("🔒 프로필: 비공개 — 본인 외 아무도 볼 수 없습니다. 공개하려면 " + SERVER + " 대시보드에서 '프로필 공개'를 켜세요.");
   } else if (visibility === "no_handle") {
-    results.push("🔒 프로필: 비공개(핸들 미설정) — " + SERVER + " 대시보드에서 핸들을 정하고 공개 여부를 선택하세요.");
+    results.push("🔒 프로필: 비공개(토큰명 미설정) — " + SERVER + " 대시보드에서 토큰명을 확인하고 공개 여부를 선택하세요.");
   }
   return results.join("\n");
 }

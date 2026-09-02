@@ -298,6 +298,18 @@ def pair_claim(body: PairClaimIn, db: Session = Depends(get_db)):
             "visibility": "public" if (user.handle and user.is_public) else "private"}
 
 
+@app.get("/api/handle/check")
+def handle_check(handle: str, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """핸들 실시간 중복 확인 — 대시보드 입력 중 피드백용."""
+    h = handle.lower().strip()
+    if not HANDLE_RE.match(h) or h in RESERVED:
+        return {"available": False, "reason": "형식 오류 — 영소문자·숫자·하이픈 3~30자"}
+    taken = db.query(User).filter(User.handle == h, User.id != user.id).first()
+    if taken:
+        return {"available": False, "reason": "이미 사용 중입니다"}
+    return {"available": True, "reason": "사용 가능"}
+
+
 @app.post("/api/uploader/token")
 def issue_token(user: User = Depends(current_user), db: Session = Depends(get_db)):
     user.upload_token = "acv_" + secrets.token_urlsafe(24)

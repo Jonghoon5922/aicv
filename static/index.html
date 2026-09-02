@@ -82,7 +82,8 @@ a{color:#7aa2ff}
     <h3 style="margin-top:0">3. 공개 프로필</h3>
     <p class="mut">프로필 주소는 가입 시 자동으로 만들어집니다. <b>공개 여부만 선택</b>하세요 (기본 비공개 — 끄면 아무도 못 봅니다).</p>
     <label><input type="checkbox" id="pub" style="width:auto"> 프로필 공개</label>
-    <input id="handle" placeholder="프로필 주소 (자동 생성 — 원하면 변경)">
+    <input id="handle" placeholder="프로필 주소 (자동 생성 — 원하면 변경)" oninput="checkHandle()">
+    <p id="handleMsg" class="mut" style="margin:2px 0"></p>
     <button onclick="saveMe()">저장</button>
     <p id="profileLink" class="mut"></p>
   </div>
@@ -152,7 +153,7 @@ async function loadMe() {
     const me = await api("/api/me");
     $("auth").classList.add("hide"); $("dash").classList.remove("hide");
     if (me.upload_token) renderToken(me.upload_token);
-    $("handle").value = me.handle || "";
+    $("handle").value = myHandle = me.handle || "";
     $("pub").checked = !!me.is_public;
     $("lastEv").textContent = me.last_evidence || "없음";
     $("profileLink").innerHTML = me.handle && me.is_public
@@ -167,6 +168,21 @@ function renderToken(t) {
 async function issueToken() {
   const j = await api("/api/uploader/token", {method: "POST"});
   renderToken(j.upload_token);
+}
+let handleTimer = null, myHandle = "";
+function checkHandle() {
+  clearTimeout(handleTimer);
+  const h = $("handle").value.trim().toLowerCase();
+  const el = $("handleMsg");
+  if (!h || h === myHandle) { el.textContent = ""; return; }
+  handleTimer = setTimeout(async () => {
+    try {
+      const j = await api("/api/handle/check?handle=" + encodeURIComponent(h));
+      el.textContent = (j.available ? "✓ " : "✕ ") + j.reason +
+        (j.available ? ` — ${location.origin}/r/${h}` : "");
+      el.className = j.available ? "ok" : "err";
+    } catch { el.textContent = ""; }
+  }, 350);
 }
 async function pairCode() {
   try {

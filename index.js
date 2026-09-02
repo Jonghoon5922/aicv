@@ -88,8 +88,8 @@ const FORMATS = {
       "- rubric 점수는 절대 인용 금지 (자체 지표라 제3자에게 근거 불명). 원천 수치만 사용",
       "- 도구 이름 나열 금지 ('ChatGPT 능숙' 류). '어떻게 쓰는가'(자산화·위임·검증)를 수치로",
       "- 토큰량은 규모 맥락으로만 1회 이하 사용 — 많이 쓴 것 자체는 역량이 아님",
-      "- '### 대표 활용 사례' 섹션: 실제 수행 작업 2~3건을 STAR 압축형(과제 → AI로 한 일 → 결과)으로. 세션 제목·스킬명에서 재구성하되 고객사·사내 시스템 실명은 반드시 익명화('국내 생명보험사' 등) — 공개 전 사용자에게 초안 확인 필수",
-      "- 문체는 경력기술서 톤(명사형 종결). 마지막 줄에 증거 링크: '상세 사용 이력(자동 집계): <포탈 프로필 URL>'",
+      "- '### 대표 활용 사례' 섹션: 실제 수행 작업 2~3건을 STAR 압축형(과제 → AI로 한 일 → 결과)으로. 증거 팩의 case_candidates(세션 제목)와 스킬명에서 재구성하되 고객사·사내 시스템 실명은 반드시 익명화('국내 생명보험사' 등) — 공개 전 사용자에게 초안 확인 필수",
+      "- 문체는 경력기술서 톤(명사형 종결). '### 참고 링크' 섹션: 증거 팩의 links 배열을 그대로 사용 + 마지막 줄에 '상세 사용 이력(자동 집계): <포탈 프로필 URL>'",
     ].join("\n"),
   },
   skills: {
@@ -223,6 +223,7 @@ async function runPublish(args) {
   args = args || {};
   // 서버에는 항상 별칭 팩만 (reveal_projects 강제 해제)
   const pack = buildEvidence({ days: args.days, reveal_projects: false });
+  delete pack.case_candidates; // 세션 제목은 로컬 전용 — 서버로 보내지 않는다
   if (Array.isArray(args.skill_groups) && args.skill_groups.length) {
     pack.extensions.skill_groups = args.skill_groups.slice(0, 8);
   }

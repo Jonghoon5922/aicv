@@ -251,6 +251,7 @@ def upload_evidence(pack: dict, user: User = Depends(uploader_user),
     red = pack.get("redaction") or {}
     if red.get("projects") == "reveal" or any("path" in p for p in pack.get("projects", [])):
         raise HTTPException(400, "실제 경로가 포함된 팩은 업로드할 수 없습니다 (reveal_projects=false로 다시 수집하세요)")
+    pack.pop("case_candidates", None)  # 세션 제목은 로컬 전용 — 서버에 저장하지 않는다
     date = ((pack.get("window") or {}).get("to") or "")[:10]
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(400, "window.to 날짜가 올바르지 않습니다")

@@ -328,6 +328,45 @@ function scanExtensions(acc) {
   return out;
 }
 
+// ── 사례 후보 (세션 제목) — 로컬 전용, 발행 시 서버 전송 전 제거 ──
+// 세션 제목은 작업 요약 한 줄이라 '대표 활용 사례' 재료로 쓰기 좋다.
+// 고객사명 등이 들어 있을 수 있으므로: 이력서에 넣을 땐 익명화 + 사용자 확인 필수.
+function collectCaseCandidates(cutoff, limit = 20) {
+  const base = path.join(os.homedir(), ".claude", "projects");
+  const titles = new Map(); // title → 최근 날짜
+  for (const file of walkFiles(base, ".jsonl")) {
+    let content;
+    try { content = fs.readFileSync(file, "utf8"); } catch { continue; }
+    let last = null, d = "";
+    for (const line of content.split("\n")) {
+      if (!line.includes("Title") && !line.includes("timestamp")) continue;
+      let e;
+      try { e = JSON.parse(line); } catch { continue; }
+      if (e.timestamp) d = day(e.timestamp);
+      if (e.type === "custom-title" && e.customTitle) last = e.customTitle;
+      else if (e.type === "ai-title" && e.aiTitle && !last) last = e.aiTitle;
+    }
+    if (last && d >= cutoff) {
+      const t = String(last).slice(0, 120);
+      if (!titles.has(t) || titles.get(t) < d) titles.set(t, d);
+    }
+  }
+  return [...titles].sort((a, b) => b[1].localeCompare(a[1])).slice(0, limit)
+    .map(([title, dd]) => ({ title, day: dd }));
+}
+
+// ── 공개 링크 (~/.aicv/config.json → {"links": [{"label","url"}]}) ──
+// 사용자가 이력서에 싣고 싶은 산출물 링크(GitHub 레포·운영 사이트)를 직접 등록.
+function collectLinks() {
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".aicv", "config.json"), "utf8"));
+    return (Array.isArray(cfg.links) ? cfg.links : [])
+      .filter((l) => l && typeof l.url === "string" && /^https?:\/\//.test(l.url))
+      .slice(0, 10)
+      .map((l) => ({ label: String(l.label || l.url).slice(0, 80), url: String(l.url).slice(0, 300) }));
+  } catch { return []; }
+}
+
 // ── 계정 식별 (해시만) ──────────────────────────────────────
 function accounts() {
   const home = os.homedir();
@@ -745,6 +784,10 @@ function buildEvidence(opts) {
     projects: projList,
 
     git: { enabled: false, repos: [], totals: { commits: 0, repos: 0 } },
+
+    // 로컬 전용 필드 — publish 시 업로드 전에 제거된다 (서버도 방어적으로 폐기)
+    case_candidates: collectCaseCandidates(cutoff),
+    links: collectLinks(),
 
     caveats: [],
   };

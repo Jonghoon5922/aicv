@@ -396,7 +396,8 @@ def profile(handle: str, db: Session = Depends(get_db)):
     if not rows:
         raise HTTPException(404, "아직 업로드된 데이터가 없습니다")
     pack = json.loads(rows[0].pack)
-    resume = (db.query(Resume).filter_by(user_id=user.id, format="full")
+    # 가장 최근에 업로드된 이력서를 표시 (양식 무관 — 마지막 발행이 곧 현재 이력서)
+    resume = (db.query(Resume).filter_by(user_id=user.id)
               .order_by(Resume.updated_at.desc()).first())
 
     e = html.escape

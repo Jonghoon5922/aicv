@@ -609,7 +609,10 @@ def profile(handle: str, db: Session = Depends(get_db)):
 
     md = ""
     if resume:
-        md = f'<div class="sec md-body"><h2>이력서</h2>{md_to_html(resume.markdown)}</div>'
+        # 이력서 본문의 '상세 사용 이력' 링크는 외부 붙여넣기용 — 자기 프로필 페이지에선 자기참조라 제거
+        own_url = f"aicv.tokenbill.my/r/{user.handle}"
+        body = "\n".join(l for l in resume.markdown.splitlines() if own_url not in l)
+        md = f'<div class="sec md-body"><h2>이력서</h2>{md_to_html(body)}</div>'
 
     win = pack.get("window", {})
     # OG 설명: 직접 만든 자산 요약 (사용량 숫자는 쓰지 않는다)

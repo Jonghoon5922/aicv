@@ -284,6 +284,92 @@ def upload_resume(body: ResumeIn, user: User = Depends(uploader_user),
     return {"ok": True, "format": body.format}
 
 
+# ── 마크다운 → HTML (제한 렌더러) ───────────────────────────
+# 원문을 먼저 전부 이스케이프한 뒤 우리가 아는 구문만 되살린다 — 스크립트 주입 불가.
+_INLINE = [
+    (re.compile(r"\*\*([^*]+)\*\*"), r"<b>\1</b>"),
+    (re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)"), r"<i>\1</i>"),
+    (re.compile(r"`([^`]+)`"), r"<code>\1</code>"),
+    # 링크는 http(s)만 허용 (이스케이프 후라 따옴표 주입 불가)
+    (re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)"),
+     r'<a href="\2" rel="noopener nofollow" target="_blank">\1</a>'),
+]
+
+
+def _inline(s: str) -> str:
+    for pat, rep in _INLINE:
+        s = pat.sub(rep, s)
+    return s
+
+
+def md_to_html(md: str) -> str:
+    lines = html.escape(md).replace("\r\n", "\n").split("\n")
+    out, i, n = [], 0, len(lines)
+    in_list = False
+
+    def close_list():
+        nonlocal in_list
+        if in_list:
+            out.append("</ul>")
+            in_list = False
+
+    while i < n:
+        line = lines[i]
+        s = line.strip()
+        if s.startswith("```"):
+            close_list()
+            block = []
+            i += 1
+            while i < n and not lines[i].strip().startswith("```"):
+                block.append(lines[i])
+                i += 1
+            out.append("<pre>" + "\n".join(block) + "</pre>")
+        elif s.startswith("|") and i + 1 < n and re.match(r"^\|[\s:|-]+\|$", lines[i + 1].strip()):
+            close_list()
+            header = [c.strip() for c in s.strip("|").split("|")]
+            out.append("<table><thead><tr>" +
+                       "".join(f"<th>{_inline(c)}</th>" for c in header) +
+                       "</tr></thead><tbody>")
+            i += 2
+            while i < n and lines[i].strip().startswith("|"):
+                cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+                out.append("<tr>" + "".join(f"<td>{_inline(c)}</td>" for c in cells) + "</tr>")
+                i += 1
+            out.append("</tbody></table>")
+            continue
+        elif s.startswith("###"):
+            close_list()
+            out.append(f"<h4>{_inline(s.lstrip('#').strip())}</h4>")
+        elif s.startswith("##"):
+            close_list()
+            out.append(f"<h3>{_inline(s.lstrip('#').strip())}</h3>")
+        elif s.startswith("#"):
+            close_list()
+            out.append(f"<h2>{_inline(s.lstrip('#').strip())}</h2>")
+        elif s.startswith("&gt;"):
+            close_list()
+            quote = []
+            while i < n and lines[i].strip().startswith("&gt;"):
+                quote.append(_inline(lines[i].strip()[4:].strip()))
+                i += 1
+            out.append("<blockquote>" + "<br>".join(quote) + "</blockquote>")
+            continue
+        elif re.match(r"^[-*] ", s):
+            if not in_list:
+                out.append("<ul>")
+                in_list = True
+            out.append(f"<li>{_inline(s[2:])}</li>")
+        elif re.match(r"^([-*_])\1\1+$", s):
+            close_list()
+            out.append("<hr>")
+        elif s:
+            close_list()
+            out.append(f"<p>{_inline(s)}</p>")
+        i += 1
+    close_list()
+    return "\n".join(out)
+
+
 # ── 공개 프로필 ─────────────────────────────────────────────
 RUBRIC_LABEL = {
     "verification": "검증 습관", "context_design": "컨텍스트 설계",
@@ -357,13 +443,32 @@ def profile(handle: str, db: Session = Depends(get_db)):
 
     md = ""
     if resume:
-        # 마크다운은 이스케이프한 본문을 <pre>로 노출 (렌더러 없이 안전하게)
-        md = f'<div class="sec"><h2>이력서</h2><pre class="md">{e(resume.markdown)}</pre></div>'
+        md = f'<div class="sec md-body"><h2>이력서</h2>{md_to_html(resume.markdown)}</div>'
 
     win = pack.get("window", {})
+    # OG 설명: 상위 rubric 2축 + 핵심 규모
+    top2 = sorted(((RUBRIC_LABEL.get(k, k), (v or {}).get("score", 0))
+                   for k, v in rubric.items() if k != "method"),
+                  key=lambda x: -x[1])[:2]
+    og_desc = (" · ".join(f"{lb} {sc}" for lb, sc in top2) +
+               f" | {_fmt_tok(vol.get('total_tokens', 0))} 토큰 · "
+               f"{pack.get('cadence', {}).get('active_days', 0)}일 활동 — "
+               "로컬 AI 사용 로그로 증명된 AI 활용 능력")
+    og_url = f"https://aicv.tokenbill.my/r/{user.handle}"
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{e(user.handle)} — AICV</title>
+<meta name="description" content="{e(og_desc)}">
+<meta property="og:type" content="profile">
+<meta property="og:site_name" content="AICV">
+<meta property="og:title" content="{e(user.handle)}의 AI 활용 능력 — AICV">
+<meta property="og:description" content="{e(og_desc)}">
+<meta property="og:url" content="{e(og_url)}">
+<meta property="og:locale" content="ko_KR">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{e(user.handle)}의 AI 활용 능력 — AICV">
+<meta name="twitter:description" content="{e(og_desc)}">
+<link rel="canonical" href="{e(og_url)}">
 <style>
 body{{font-family:'Segoe UI',Pretendard,sans-serif;max-width:720px;margin:0 auto;
  padding:32px 20px;background:#0f1117;color:#e6e8ee}}
@@ -381,8 +486,24 @@ a{{color:#7aa2ff}} h1{{margin:0 0 4px}} small{{color:#8b90a0;font-weight:400}}
 .fill{{height:100%;background:linear-gradient(90deg,#5b7bff,#8f6bff);border-radius:6px}}
 ul{{padding-left:20px}} li{{margin:6px 0}}
 .spark{{width:100%;height:64px}} .spark polyline{{fill:none;stroke:#7aa2ff;stroke-width:2}}
-.md{{white-space:pre-wrap;background:#171b26;border:1px solid #242b3d;border-radius:10px;
- padding:16px;font-size:13px;line-height:1.6;overflow-x:auto}}
+.md-body{{background:#171b26;border:1px solid #242b3d;border-radius:10px;padding:6px 20px 16px;
+ font-size:14px;line-height:1.7}}
+.md-body>h2{{margin:14px -20px 10px;padding:0 20px 6px}}
+.md-body h2:not(:first-child),.md-body h3{{font-size:16px;margin:20px 0 8px;color:#cdd3e0;
+ border:0;padding:0}}
+.md-body h4{{font-size:14px;margin:14px 0 6px}}
+.md-body blockquote{{margin:10px 0;padding:8px 14px;border-left:3px solid #5b7bff;
+ background:#131722;border-radius:0 8px 8px 0;color:#9aa1b5;font-size:13px}}
+.md-body table{{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px;display:block;
+ overflow-x:auto}}
+.md-body th,.md-body td{{border:1px solid #242b3d;padding:6px 10px;text-align:left}}
+.md-body th{{background:#1d2333}}
+.md-body code{{background:#0f1117;border:1px solid #242b3d;border-radius:4px;padding:1px 5px;
+ font-size:12px}}
+.md-body pre{{background:#0f1117;border:1px solid #242b3d;border-radius:8px;padding:12px;
+ overflow-x:auto;font-size:12px}}
+.md-body hr{{border:0;border-top:1px solid #242b3d;margin:16px 0}}
+.md-body p{{margin:8px 0}}
 .caveat li{{color:#8b90a0;font-size:13px}}
 footer{{margin-top:40px;color:#8b90a0;font-size:13px;border-top:1px solid #242b3d;padding-top:14px}}
 </style></head><body>

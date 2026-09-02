@@ -205,7 +205,9 @@ function promptText(format, days, language) {
     "   - 증거 팩에 없는 사실을 지어내지 마. 모든 주장에는 수치 근거를 붙여.",
     "   - 토큰량 자체보다 '어떻게 쓰는가'(확장·위임·검증 습관)를 강조해.",
     "   - highlights의 사실 카드를 우선 활용하고, growth가 있으면 성장 스토리로 연결해.",
-    "4. 사용자에게 초안을 보여주고, 확정되면 save_ai_resume(format=\"" + (format || "full") + "\")로 저장해.",
+    "4. 사용자에게 초안을 보여주고, 확정되면 publish_aicv(format=\"" + (format || "full") + "\", markdown=초안, skill_groups=직접 만든 스킬 묶음)로 포탈에 바로 발행해.",
+    "   발행 결과의 프로필 상태(공개/비공개)를 사용자에게 그대로 전달해. 비공개면 아무도 못 보니 안심해도 된다고 알려줘.",
+    "   로컬 파일 저장(save_ai_resume)은 사용자가 파일을 원할 때만.",
   ].join("\n");
 }
 
@@ -229,11 +231,16 @@ async function runPublish(args) {
     pack.extensions.skill_groups = args.skill_groups.slice(0, 8);
   }
   const results = [];
+  let visibility = null, handle = null;
   try {
     const r = await request("POST", "/api/evidence", pack);
-    results.push(r.status === 200
-      ? "증거 팩 업로드 완료 (" + r.json.date + ")" + (r.json.profile ? " → " + SERVER + r.json.profile : "")
-      : "증거 팩 업로드 실패 (HTTP " + r.status + (r.json.detail ? " — " + r.json.detail : "") + ")");
+    if (r.status === 200) {
+      visibility = r.json.visibility;
+      handle = r.json.handle;
+      results.push("증거 팩 업로드 완료 (" + r.json.date + ")");
+    } else {
+      results.push("증거 팩 업로드 실패 (HTTP " + r.status + (r.json.detail ? " — " + r.json.detail : "") + ")");
+    }
   } catch (e) { results.push("증거 팩 업로드 실패 (" + e.message + ")"); }
   if (args.markdown) {
     try {
@@ -241,6 +248,14 @@ async function runPublish(args) {
       results.push(r.status === 200 ? "이력서(" + (args.format || "full") + ") 업로드 완료"
         : "이력서 업로드 실패 (HTTP " + r.status + (r.json.detail ? " — " + r.json.detail : "") + ")");
     } catch (e) { results.push("이력서 업로드 실패 (" + e.message + ")"); }
+  }
+  // 공개 상태 안내 — 사용자는 이것만 알면 된다
+  if (visibility === "public") {
+    results.push("🌐 프로필: 공개 — " + SERVER + "/r/" + handle + " (링크를 아는 누구나 볼 수 있음)");
+  } else if (visibility === "private") {
+    results.push("🔒 프로필: 비공개 — 본인 외 아무도 볼 수 없습니다. 공개하려면 " + SERVER + " 대시보드에서 '프로필 공개'를 켜세요.");
+  } else if (visibility === "no_handle") {
+    results.push("🔒 프로필: 비공개(핸들 미설정) — " + SERVER + " 대시보드에서 핸들을 정하고 공개 여부를 선택하세요.");
   }
   return results.join("\n");
 }

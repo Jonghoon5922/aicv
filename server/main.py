@@ -270,7 +270,10 @@ def upload_evidence(pack: dict, user: User = Depends(uploader_user),
         db.delete(o)
     db.commit()
     return {"ok": True, "date": date,
-            "profile": f"/r/{user.handle}" if user.handle and user.is_public else None}
+            "profile": f"/r/{user.handle}" if user.handle and user.is_public else None,
+            "handle": user.handle,
+            "visibility": "public" if (user.handle and user.is_public) else
+                          ("private" if user.handle else "no_handle")}
 
 
 @app.post("/api/resume")
@@ -282,7 +285,9 @@ def upload_resume(body: ResumeIn, user: User = Depends(uploader_user),
     else:
         db.add(Resume(user_id=user.id, format=body.format, markdown=body.markdown))
     db.commit()
-    return {"ok": True, "format": body.format}
+    return {"ok": True, "format": body.format,
+            "visibility": "public" if (user.handle and user.is_public) else
+                          ("private" if user.handle else "no_handle")}
 
 
 # ── 마크다운 → HTML (제한 렌더러) ───────────────────────────

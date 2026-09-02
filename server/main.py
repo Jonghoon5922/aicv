@@ -409,7 +409,7 @@ def profile(handle: str, db: Session = Depends(get_db)):
                  f'<div class="bar"><div class="fill" style="width:{sc}%"></div></div>'
                  f'<span class="sc">{sc}</span></div>')
 
-    cards = "".join(f'<li>{e(h.get("fact", ""))}</li>' for h in pack.get("highlights", []))
+    # 하이라이트는 이력서 작성용 내부 원료 — 프로필에는 노출하지 않는다 (이력서 본문과 중복·맥락 없는 수치)
     caveats = "".join(f'<li>{e(c)}</li>' for c in pack.get("caveats", []))
 
     # 성장 그래프: 스냅샷 시계열 (날짜별 rubric 평균)
@@ -432,14 +432,12 @@ def profile(handle: str, db: Session = Depends(get_db)):
                  f'<svg viewBox="0 0 300 64" class="spark"><polyline points="{pts}"/></svg></div>')
 
     vol = pack.get("volume", {})
-    git_t = (pack.get("git") or {}).get("totals") or {}
+    # 커밋 카드는 git 커버리지가 로컬 .git 보유 레포에 한정돼 과소집계 — 커버리지 개선 전까지 미노출
     stats = [
         ("토큰", _fmt_tok(vol.get("total_tokens", 0))),
         ("세션", f"{vol.get('sessions', 0)}"),
         ("활동일", f"{pack.get('cadence', {}).get('active_days', 0)}일"),
     ]
-    if git_t.get("commits"):
-        stats.append(("커밋", f"{git_t['commits']}건"))
     stat_html = "".join(f'<div class="stat"><b>{v}</b><span>{k}</span></div>' for k, v in stats)
 
     md = ""
@@ -512,7 +510,6 @@ footer{{margin-top:40px;color:#8b90a0;font-size:13px;border-top:1px solid #242b3
 <div class="badge">🔍 로컬 사용 로그 기반 · {e(win.get('from', ''))} ~ {e(win.get('to', ''))} · schema v{pack.get('schema_version', 1)}</div>
 <div class="stats">{stat_html}</div>
 <div class="sec"><h2>역량 프로파일 <small>(규칙 기반, 0~100)</small></h2>{bars}</div>
-<div class="sec"><h2>하이라이트</h2><ul>{cards}</ul></div>
 {spark}
 {md}
 <div class="sec caveat"><h2>데이터 한계</h2><ul>{caveats}</ul></div>

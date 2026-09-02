@@ -343,20 +343,38 @@ function scanGit(projList, projByHash, cutoff) {
     email = execFileSync("git", ["config", "--global", "user.email"],
       { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }).trim() || null;
   } catch {}
+  // 작업 폴더가 레포 하위 디렉터리이거나 이미 지워진 경우까지 커버:
+  // 존재하는 가장 가까운 상위 폴더에서 rev-parse로 레포 루트를 찾고, 같은 루트는 병합한다.
+  const seenRoots = new Set();
   for (const p of projList) {
-    const cwd = projByHash[p.path_hash];
-    if (!cwd || !fs.existsSync(path.join(cwd, ".git"))) continue;
-    const count = git(cwd, ["rev-list", "--count", "--since=" + cutoff, "HEAD"]);
+    let cwd = projByHash[p.path_hash];
+    if (!cwd) continue;
+    while (cwd && !fs.existsSync(cwd)) {
+      const up = path.dirname(cwd);
+      if (up === cwd) { cwd = null; break; }
+      cwd = up;
+    }
+    if (!cwd) continue;
+    let root = git(cwd, ["rev-parse", "--show-toplevel"]);
+    if (!root) continue;
+    root = path.resolve(root);
+    // 원래 작업 경로가 이 레포 안에 있을 때만 인정 (엉뚱한 상위 레포 오귀속 방지)
+    const orig = path.resolve(projByHash[p.path_hash]);
+    if (!(orig + path.sep).toLowerCase().startsWith((root + path.sep).toLowerCase())) continue;
+    const rootKey = root.toLowerCase();
+    if (seenRoots.has(rootKey)) continue;
+    seenRoots.add(rootKey);
+    const count = git(root, ["rev-list", "--count", "--since=" + cutoff, "HEAD"]);
     if (count === null) continue;
     const commits = parseInt(count, 10) || 0;
     let mine = 0, insertions = 0, deletions = 0, filesChanged = 0;
     if (commits && email) {
-      const c = git(cwd, ["rev-list", "--count", "--since=" + cutoff, "--author=" + email, "HEAD"]);
+      const c = git(root, ["rev-list", "--count", "--since=" + cutoff, "--author=" + email, "HEAD"]);
       mine = parseInt(c, 10) || 0;
     }
     if (commits) {
       // --shortstat 합산 (파일·삽입·삭제)
-      const stat = git(cwd, ["log", "--since=" + cutoff, "--shortstat", "--pretty=%x00"]);
+      const stat = git(root, ["log", "--since=" + cutoff, "--shortstat", "--pretty=%x00"]);
       if (stat) {
         for (const m of stat.matchAll(/(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/g)) {
           filesChanged += +m[1] || 0; insertions += +m[2] || 0; deletions += +m[3] || 0;
@@ -368,6 +386,41 @@ function scanGit(projList, projByHash, cutoff) {
       files_changed: filesChanged, insertions, deletions,
     });
   }
+  // 수동 등록 레포 (~/.aicv/config.json → {"extra_repos": ["C:/path/to/repo", ...]})
+  // 세션 로그에 안 잡히는 레포(다른 폴더에서 커밋만 한 경우 등)를 사용자가 직접 포함시키는 통로.
+  // 등록은 본인 선택이므로 별칭 대신 폴더 이름을 쓴다.
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".aicv", "config.json"), "utf8"));
+    for (const rp of Array.isArray(cfg.extra_repos) ? cfg.extra_repos : []) {
+      const root0 = git(String(rp), ["rev-parse", "--show-toplevel"]);
+      if (!root0) continue;
+      const root = path.resolve(root0);
+      const rootKey = root.toLowerCase();
+      if (seenRoots.has(rootKey)) continue;
+      seenRoots.add(rootKey);
+      const count = git(root, ["rev-list", "--count", "--since=" + cutoff, "HEAD"]);
+      if (count === null) continue;
+      const commits = parseInt(count, 10) || 0;
+      let mine = 0, insertions = 0, deletions = 0, filesChanged = 0;
+      if (commits && email) {
+        const c = git(root, ["rev-list", "--count", "--since=" + cutoff, "--author=" + email, "HEAD"]);
+        mine = parseInt(c, 10) || 0;
+      }
+      if (commits) {
+        const stat = git(root, ["log", "--since=" + cutoff, "--shortstat", "--pretty=%x00"]);
+        if (stat) {
+          for (const m of stat.matchAll(/(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/g)) {
+            filesChanged += +m[1] || 0; insertions += +m[2] || 0; deletions += +m[3] || 0;
+          }
+        }
+      }
+      repos.push({
+        alias: path.basename(root), registered: true,
+        commits_in_window: commits, authored_by_subject: mine,
+        files_changed: filesChanged, insertions, deletions,
+      });
+    }
+  } catch {}
   repos.sort((a, b) => b.commits_in_window - a.commits_in_window);
   return {
     enabled: true,
@@ -679,8 +732,8 @@ function buildEvidence(opts) {
     caveats: [],
   };
 
-  // git 커밋 이력 (기본 켜짐, include_git=false로 끌 수 있음)
-  if (opts.include_git !== false) {
+  // git 커밋 이력 — 기본 꺼짐(opt-in). 커밋 수는 이력서 신호로 약해 보조 지표로만 제공
+  if (opts.include_git === true) {
     try { pack.git = scanGit(pack.projects, projByHash, cutoff); } catch {}
   }
 

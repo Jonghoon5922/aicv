@@ -120,14 +120,14 @@ const TOOLS = [
     description:
       "로컬 AI CLI 사용 로그(Claude Code·Codex·Gemini)를 스캔해 'AI 활용 능력 증거 팩'(구조화 JSON)을 만듭니다. " +
       "대화 원문·파일 내용은 포함하지 않으며 집계값과 이름표만 담습니다. 네트워크 접근 없음. " +
-      "git 커밋 이력과 이전 스냅샷 대비 성장 델타(growth)도 포함됩니다. " +
+      "이전 스냅샷 대비 성장 델타(growth)를 포함하며, include_git=true일 때만 git 커밋 수를 보조 지표로 집계합니다. " +
       "이 결과를 바탕으로 호스트(당신)가 이력서 문장을 작성하세요. rubric 점수는 규칙 기반으로 이미 계산되어 있으니 수정하지 말고 인용만 하세요.",
     inputSchema: {
       type: "object",
       properties: {
         days: { type: "integer", description: "집계 기간(일). 기본 90, 범위 7~365", minimum: 7, maximum: 365 },
         reveal_projects: { type: "boolean", description: "true면 프로젝트 실제 경로 포함(기본 false: 별칭+해시만). 경로에 회사·고객사명이 있을 수 있으니 사용자 동의 후에만." },
-        include_git: { type: "boolean", description: "git 커밋 이력 수집 여부(기본 true)" },
+        include_git: { type: "boolean", description: "git 커밋 이력 수집 여부(기본 false — 커밋 수는 보조 지표, 원하는 경우만 켜세요. ~/.aicv/config.json의 extra_repos로 레포 수동 등록 가능)" },
       },
     },
   },

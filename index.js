@@ -353,6 +353,22 @@ async function handle(msg) {
   if (id !== undefined) return replyErr(id, -32601, "method not found: " + method);
 }
 
+// 시작 시 자동 동기화 (백그라운드) — 계정이 연결된 경우에만.
+// 증거 팩(집계값)만 올라가므로 프로필의 기간·자산·스택이 세션을 열 때마다 최신화된다.
+// 이력서 본문(문장)은 사용자 확인을 거치는 설계라 자동 갱신하지 않는다.
+// 과도한 업로드 방지: 마지막 동기화가 6시간 이내면 건너뜀.
+const SYNC_MARK = path.join(os.homedir(), ".aicv", "last-sync");
+function shouldAutoSync() {
+  if (!TOKEN) return false;
+  try { return Date.now() - fs.statSync(SYNC_MARK).mtimeMs > 6 * 3600 * 1000; } catch { return true; }
+}
+if (shouldAutoSync()) {
+  runPublish({}).then((r) => {
+    try { fs.writeFileSync(SYNC_MARK, new Date().toISOString()); } catch {}
+    log("자동 동기화: " + r.split("\n")[0]);
+  }).catch((e) => log("자동 동기화 오류: " + e.message));
+}
+
 const rl = readline.createInterface({ input: process.stdin, terminal: false });
 rl.on("line", (line) => {
   if (!line.trim()) return;

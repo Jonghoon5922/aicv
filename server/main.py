@@ -404,7 +404,9 @@ def profile(handle: str, db: Session = Depends(get_db)):
     e = html.escape
     # 하이라이트·rubric 바·사용량 카드는 프로필에 노출하지 않는다 —
     # "많이 썼다" 계열 숫자는 채용 관점에서 판단 근거가 아니고, 로그 기반 신뢰는 상단 배지가 담당.
-    caveats = "".join(f'<li>{e(c)}</li>' for c in pack.get("caveats", []))
+    # 프로필에 표시하지 않는 지표(실패율 등)에 대한 각주는 제외
+    caveats = "".join(f'<li>{e(c)}</li>' for c in pack.get("caveats", [])
+                      if "실패율" not in c)
 
     # 직접 만든 자동화 자산 — "쓰는 사람"이 아니라 "만들어 쓰는 사람"임을 보여주는 구간.
     # 발행 시 호스트 LLM이 넘긴 skill_groups(비슷한 스킬 묶음 + 한 줄 설명)가 있으면 그걸 쓰고,

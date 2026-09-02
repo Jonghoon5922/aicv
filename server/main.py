@@ -31,6 +31,8 @@ SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-me")
 JWT_ALG = "HS256"
 TOKEN_TTL_HOURS = 24 * 14
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+# 관리자: 쉼표로 구분한 이메일 목록 — 이 계정으로 로그인하면 /admin 접근 가능
+ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
 AUTH_GOOGLE_ONLY = os.environ.get("AUTH_GOOGLE_ONLY", "") == "1"
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./aicv.db")
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -448,6 +450,45 @@ def md_to_html(md: str) -> str:
         i += 1
     close_list()
     return "\n".join(out)
+
+
+# ── 관리자 ──────────────────────────────────────────────────
+def admin_user(user: User = Depends(current_user)) -> User:
+    if user.email.lower() not in ADMIN_EMAILS:
+        raise HTTPException(403, "관리자 권한이 없습니다")
+    return user
+
+
+@app.get("/api/admin/overview")
+def admin_overview(user: User = Depends(admin_user), db: Session = Depends(get_db)):
+    now = datetime.utcnow()
+    week_ago = now - timedelta(days=7)
+    users = db.query(User).order_by(User.created_at.desc()).all()
+    last_ev = dict(db.query(Evidence.user_id, Evidence.date)
+                   .order_by(Evidence.date.asc()).all())  # 뒤가 최신으로 덮임
+    resume_users = {r.user_id for r in db.query(Resume.user_id).distinct()}
+    return {
+        "totals": {
+            "users": len(users),
+            "public_profiles": sum(1 for u in users if u.is_public),
+            "connected": sum(1 for u in users if u.upload_token),
+            "with_resume": len(resume_users),
+            "new_users_7d": sum(1 for u in users if u.created_at and u.created_at >= week_ago),
+            "uploads_7d": db.query(Evidence).filter(Evidence.uploaded_at >= week_ago).count(),
+        },
+        "users": [{
+            "email": u.email, "handle": u.handle, "is_public": u.is_public,
+            "connected": bool(u.upload_token),
+            "created_at": u.created_at.isoformat()[:10] if u.created_at else None,
+            "last_upload": last_ev.get(u.id),
+            "has_resume": u.id in resume_users,
+        } for u in users[:200]],
+    }
+
+
+@app.get("/admin", include_in_schema=False)
+def admin_page():
+    return FileResponse(STATIC_DIR / "admin.html")
 
 
 @app.get("/api/resume")

@@ -442,6 +442,35 @@ def profile(handle: str, db: Session = Depends(get_db)):
                 f'<div class="pills">{names}</div>')
         assets = ('<div class="sec"><h2>직접 만든 자동화 자산</h2>' + "".join(parts) + "</div>")
 
+    # 기술 스택 — 로그의 파일 터치에서 자동 집계된 언어를 도메인별로 묶어 표시 (발행마다 자동 갱신)
+    STACK_DOMAIN = {
+        "Java": "백엔드", "Kotlin": "백엔드", "Python": "백엔드", "Go": "백엔드",
+        "Rust": "백엔드", "Ruby": "백엔드", "PHP": "백엔드", "C#": "백엔드",
+        "JavaScript": "프론트엔드", "TypeScript": "프론트엔드", "HTML": "프론트엔드",
+        "CSS": "프론트엔드", "Vue": "프론트엔드",
+        "SQL": "데이터",
+        "Shell": "인프라", "PowerShell": "인프라", "Terraform": "인프라",
+        "Gradle": "인프라", "YAML": "인프라", "Docker": "인프라",
+    }
+    DOMAIN_ORDER = ["백엔드", "프론트엔드", "데이터", "인프라"]
+    by_domain: dict[str, list[str]] = {}
+    for lang in (pack.get("stack") or {}).get("languages", []):
+        label = lang.get("label", "")
+        dom = STACK_DOMAIN.get(label)
+        if dom and label not in by_domain.get(dom, []):
+            by_domain.setdefault(dom, []).append(label)
+    stack_html = ""
+    if by_domain:
+        rows_html = ""
+        for dom in DOMAIN_ORDER:
+            if dom not in by_domain:
+                continue
+            pills = "".join(f'<span class="pill">{e(l)}</span>' for l in by_domain[dom][:8])
+            rows_html += (f'<div class="asset-group"><div class="asset-head"><b>{dom}</b></div>'
+                          f'<div class="pills">{pills}</div></div>')
+        stack_html = ('<div class="sec"><h2>기술 스택 <small>(사용 로그에서 자동 집계)</small></h2>'
+                      + rows_html + "</div>")
+
     md = ""
     if resume:
         md = f'<div class="sec md-body"><h2>이력서</h2>{md_to_html(resume.markdown)}</div>'
@@ -521,6 +550,7 @@ footer{{margin-top:40px;color:#8b90a0;font-size:13px;border-top:1px solid #242b3
 <h1>{e(user.handle)} <small>의 AI 활용 능력</small></h1>
 <div class="badge">🔍 로컬 사용 로그 기반 · {e(win.get('from', ''))} ~ {e(win.get('to', ''))} · schema v{pack.get('schema_version', 1)}</div>
 {assets}
+{stack_html}
 {md}
 <div class="sec caveat"><h2>데이터 한계</h2><ul>{caveats}</ul></div>
 <footer>AICV — 실제 작업 로그가 역량을 증명합니다 · <a href="/">나도 만들기</a></footer>

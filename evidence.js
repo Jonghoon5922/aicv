@@ -275,14 +275,31 @@ function scanExtensions(acc) {
   try { cfg = JSON.parse(fs.readFileSync(path.join(home, ".claude.json"), "utf8")); } catch {}
 
   // 스킬: 사용 이력(skillUsage) + 로그의 attributionSkill 합산
+  // "plugin:name" / "scope:name" 형태는 이름 부분으로 정규화해 중복 합산
   const usage = cfg.skillUsage || {};
   const skillCounts = {};
-  for (const [id, v] of Object.entries(usage)) skillCounts[id] = (v && v.usageCount) || 0;
-  for (const [id, n] of Object.entries(acc.skillCalls)) skillCounts[id] = Math.max(skillCounts[id] || 0, n);
-  // authored 판정(휴리스틱): 마켓/번들 스킬 접두사가 아니면 직접 작성한 것으로 본다
-  const BUNDLED = /^(anthropic-skills[:@]|claude-)/;
-  for (const [id, n] of Object.entries(skillCounts)) {
-    out.custom_skills.push({ name: id, invocations: n, authored: !BUNDLED.test(id) });
+  const norm = (id) => String(id).split(":").pop();
+  for (const [id, v] of Object.entries(usage)) {
+    const k = norm(id);
+    skillCounts[k] = (skillCounts[k] || 0) + ((v && v.usageCount) || 0);
+  }
+  for (const [id, n] of Object.entries(acc.skillCalls)) {
+    const k = norm(id);
+    skillCounts[k] = Math.max(skillCounts[k] || 0, n);
+  }
+  // authored 판정: Claude Code 기본 제공/공식 플러그인 스킬을 제외한 나머지를 직접 작성으로 본다
+  const BUILTIN = new Set([
+    "artifact-design", "artifact-diagramming", "artifact-capabilities", "dataviz", "design",
+    "update-config", "keybindings-help", "code-review", "simplify", "security-review",
+    "fewer-permission-prompts", "loop", "schedule", "claude-api", "run", "init",
+    "workflow-authoring", "explain-usage", "morning", "consolidate-memory", "import-memory",
+    "setup-cowork", "skill-creator", "docx", "pptx", "xlsx", "pdf",
+  ]);
+  const isBuiltin = (rawId, name) => /^(anthropic-skills[:@]|claude-)/.test(rawId) || BUILTIN.has(name);
+  const rawIds = new Set([...Object.keys(usage), ...Object.keys(acc.skillCalls)]);
+  const builtinNames = new Set([...rawIds].filter((id) => isBuiltin(id, norm(id))).map(norm));
+  for (const [name, n] of Object.entries(skillCounts)) {
+    out.custom_skills.push({ name, invocations: n, authored: !builtinNames.has(name) });
   }
   out.custom_skills.sort((a, b) => b.invocations - a.invocations);
 

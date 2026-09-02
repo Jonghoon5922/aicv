@@ -412,6 +412,31 @@ def profile(handle: str, db: Session = Depends(get_db)):
     # 하이라이트는 이력서 작성용 내부 원료 — 프로필에는 노출하지 않는다 (이력서 본문과 중복·맥락 없는 수치)
     caveats = "".join(f'<li>{e(c)}</li>' for c in pack.get("caveats", []))
 
+    # 직접 만든 자동화 자산 — "쓰는 사람"이 아니라 "만들어 쓰는 사람"임을 목록으로 보여주는 구간
+    ext = pack.get("extensions") or {}
+    authored = [s for s in ext.get("custom_skills", []) if s.get("authored")]
+    mcp_servers = ext.get("mcp_servers_configured", [])
+    assets = ""
+    if authored or mcp_servers:
+        parts = []
+        if authored:
+            total_inv = sum(s.get("invocations", 0) for s in authored)
+            window_d = pack.get("window", {}).get("days", 90)
+            pills = "".join(
+                f'<span class="pill">{e(s["name"])}<em>×{s.get("invocations", 0):,}</em></span>'
+                for s in authored[:12])
+            parts.append(
+                f'<p class="asset-lead">반복 업무를 프롬프트가 아닌 재사용 도구로 만들어 씁니다 — '
+                f'커스텀 스킬 <b>{len(authored)}종</b>을 직접 작성, '
+                f'{window_d}일간 <b>{total_inv:,}회</b> 실전 투입.</p>'
+                f'<div class="pills">{pills}</div>')
+        if mcp_servers:
+            names = "".join(f'<span class="pill mcp">{e(s.get("name", ""))}</span>' for s in mcp_servers[:8])
+            parts.append(
+                f'<p class="asset-lead">MCP 서버 <b>{len(mcp_servers)}개</b>를 직접 개발·구성해 운영합니다.</p>'
+                f'<div class="pills">{names}</div>')
+        assets = ('<div class="sec"><h2>직접 만든 자동화 자산</h2>' + "".join(parts) + "</div>")
+
     # 성장 그래프: 스냅샷 시계열 (날짜별 rubric 평균)
     series = []
     for r in reversed(rows):
@@ -504,11 +529,18 @@ ul{{padding-left:20px}} li{{margin:6px 0}}
 .md-body hr{{border:0;border-top:1px solid #242b3d;margin:16px 0}}
 .md-body p{{margin:8px 0}}
 .caveat li{{color:#8b90a0;font-size:13px}}
+.asset-lead{{margin:12px 0 8px;font-size:14px;color:#c3c9d8}}
+.pills{{display:flex;flex-wrap:wrap;gap:8px}}
+.pill{{background:#1d2333;border:1px solid #2e3650;border-radius:16px;padding:4px 12px;
+ font-size:13px;color:#cdd6f4}}
+.pill em{{font-style:normal;color:#7aa2ff;margin-left:6px;font-size:12px}}
+.pill.mcp{{border-color:#3d3163;background:#221d33;color:#d8ccf4}}
 footer{{margin-top:40px;color:#8b90a0;font-size:13px;border-top:1px solid #242b3d;padding-top:14px}}
 </style></head><body>
 <h1>{e(user.handle)} <small>의 AI 활용 능력</small></h1>
 <div class="badge">🔍 로컬 사용 로그 기반 · {e(win.get('from', ''))} ~ {e(win.get('to', ''))} · schema v{pack.get('schema_version', 1)}</div>
 <div class="stats">{stat_html}</div>
+{assets}
 <div class="sec"><h2>역량 프로파일 <small>(규칙 기반, 0~100)</small></h2>{bars}</div>
 {spark}
 {md}

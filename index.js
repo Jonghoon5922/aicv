@@ -160,6 +160,20 @@ const TOOLS = [
         days: { type: "integer", description: "집계 기간(일, 기본 90)", minimum: 7, maximum: 365 },
         markdown: { type: "string", description: "함께 올릴 완성 이력서 본문(선택)" },
         format: { type: "string", enum: ["full", "career", "skills", "github"], description: "이력서 양식(기본 full)" },
+        skill_groups: {
+          type: "array",
+          description: "프로필 '직접 만든 자동화 자산' 섹션용 — 직접 만든 스킬·MCP를 비슷한 것끼리 묶고 한 줄 설명을 붙인다. 호스트(당신)가 증거 팩의 custom_skills(authored)·mcp_servers_configured를 보고 작성. 고객사 실명 금지.",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string", description: "묶음 이름 (예: '프레임워크 전환')" },
+              description: { type: "string", description: "한 줄 설명 (예: '레거시 코드를 영역별로 자동 변환')" },
+              items: { type: "array", items: { type: "string" }, description: "스킬/서버 이름들" },
+              kind: { type: "string", enum: ["skill", "mcp"], description: "mcp면 보라색 표시" },
+            },
+            required: ["title", "items"],
+          },
+        },
       },
     },
   },
@@ -209,6 +223,9 @@ async function runPublish(args) {
   args = args || {};
   // 서버에는 항상 별칭 팩만 (reveal_projects 강제 해제)
   const pack = buildEvidence({ days: args.days, reveal_projects: false });
+  if (Array.isArray(args.skill_groups) && args.skill_groups.length) {
+    pack.extensions.skill_groups = args.skill_groups.slice(0, 8);
+  }
   const results = [];
   try {
     const r = await request("POST", "/api/evidence", pack);

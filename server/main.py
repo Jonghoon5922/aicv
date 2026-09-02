@@ -401,34 +401,38 @@ def profile(handle: str, db: Session = Depends(get_db)):
               .order_by(Resume.updated_at.desc()).first())
 
     e = html.escape
-    rubric = pack.get("rubric", {})
-    bars = ""
-    for key, label in RUBRIC_LABEL.items():
-        sc = (rubric.get(key) or {}).get("score", 0)
-        bars += (f'<div class="row"><span class="lb">{label}</span>'
-                 f'<div class="bar"><div class="fill" style="width:{sc}%"></div></div>'
-                 f'<span class="sc">{sc}</span></div>')
-
-    # 하이라이트는 이력서 작성용 내부 원료 — 프로필에는 노출하지 않는다 (이력서 본문과 중복·맥락 없는 수치)
+    # 하이라이트·rubric 바·사용량 카드는 프로필에 노출하지 않는다 —
+    # "많이 썼다" 계열 숫자는 채용 관점에서 판단 근거가 아니고, 로그 기반 신뢰는 상단 배지가 담당.
     caveats = "".join(f'<li>{e(c)}</li>' for c in pack.get("caveats", []))
 
-    # 직접 만든 자동화 자산 — "쓰는 사람"이 아니라 "만들어 쓰는 사람"임을 목록으로 보여주는 구간
+    # 직접 만든 자동화 자산 — "쓰는 사람"이 아니라 "만들어 쓰는 사람"임을 보여주는 구간.
+    # 발행 시 호스트 LLM이 넘긴 skill_groups(비슷한 스킬 묶음 + 한 줄 설명)가 있으면 그걸 쓰고,
+    # 없으면 이름 나열로 폴백.
     ext = pack.get("extensions") or {}
     authored = [s for s in ext.get("custom_skills", []) if s.get("authored")]
     mcp_servers = ext.get("mcp_servers_configured", [])
+    groups = ext.get("skill_groups") or []
     assets = ""
-    if authored or mcp_servers:
+    if groups:
+        rows_html = ""
+        for g in groups[:8]:
+            if not isinstance(g, dict):
+                continue
+            pills = "".join(f'<span class="pill{" mcp" if g.get("kind") == "mcp" else ""}">{e(str(i))}</span>'
+                            for i in (g.get("items") or [])[:12])
+            rows_html += (f'<div class="asset-group"><div class="asset-head">'
+                          f'<b>{e(str(g.get("title", "")))}</b>'
+                          f'<span>{e(str(g.get("description", "")))}</span></div>'
+                          f'<div class="pills">{pills}</div></div>')
+        assets = ('<div class="sec"><h2>직접 만든 자동화 자산</h2>'
+                  '<p class="asset-lead">반복 업무를 프롬프트가 아닌 재사용 도구로 만들어 씁니다.</p>'
+                  + rows_html + "</div>")
+    elif authored or mcp_servers:
         parts = []
         if authored:
-            total_inv = sum(s.get("invocations", 0) for s in authored)
-            window_d = pack.get("window", {}).get("days", 90)
-            pills = "".join(
-                f'<span class="pill">{e(s["name"])}<em>×{s.get("invocations", 0):,}</em></span>'
-                for s in authored[:12])
+            pills = "".join(f'<span class="pill">{e(s["name"])}</span>' for s in authored[:12])
             parts.append(
-                f'<p class="asset-lead">반복 업무를 프롬프트가 아닌 재사용 도구로 만들어 씁니다 — '
-                f'커스텀 스킬 <b>{len(authored)}종</b>을 직접 작성, '
-                f'{window_d}일간 <b>{total_inv:,}회</b> 실전 투입.</p>'
+                f'<p class="asset-lead">커스텀 스킬 <b>{len(authored)}종</b>을 직접 작성·실전 운영.</p>'
                 f'<div class="pills">{pills}</div>')
         if mcp_servers:
             names = "".join(f'<span class="pill mcp">{e(s.get("name", ""))}</span>' for s in mcp_servers[:8])
@@ -437,46 +441,18 @@ def profile(handle: str, db: Session = Depends(get_db)):
                 f'<div class="pills">{names}</div>')
         assets = ('<div class="sec"><h2>직접 만든 자동화 자산</h2>' + "".join(parts) + "</div>")
 
-    # 성장 그래프: 스냅샷 시계열 (날짜별 rubric 평균)
-    series = []
-    for r in reversed(rows):
-        try:
-            pk = json.loads(r.pack)
-            scores = [v.get("score", 0) for k, v in pk.get("rubric", {}).items()
-                      if isinstance(v, dict)]
-            if scores:
-                series.append((r.date, round(sum(scores) / len(scores))))
-        except Exception:
-            pass
-    spark = ""
-    if len(series) >= 2:
-        pts = " ".join(f"{i * (300 / (len(series) - 1)):.0f},{60 - s * 0.6:.0f}"
-                       for i, (_, s) in enumerate(series))
-        spark = (f'<div class="sec"><h2>성장 추이 <small>(rubric 평균, {e(series[0][0])} ~ '
-                 f'{e(series[-1][0])})</small></h2>'
-                 f'<svg viewBox="0 0 300 64" class="spark"><polyline points="{pts}"/></svg></div>')
-
-    vol = pack.get("volume", {})
-    # 커밋 카드는 git 커버리지가 로컬 .git 보유 레포에 한정돼 과소집계 — 커버리지 개선 전까지 미노출
-    stats = [
-        ("토큰", _fmt_tok(vol.get("total_tokens", 0))),
-        ("세션", f"{vol.get('sessions', 0)}"),
-        ("활동일", f"{pack.get('cadence', {}).get('active_days', 0)}일"),
-    ]
-    stat_html = "".join(f'<div class="stat"><b>{v}</b><span>{k}</span></div>' for k, v in stats)
-
     md = ""
     if resume:
         md = f'<div class="sec md-body"><h2>이력서</h2>{md_to_html(resume.markdown)}</div>'
 
     win = pack.get("window", {})
-    # OG 설명: 상위 rubric 2축 + 핵심 규모
-    top2 = sorted(((RUBRIC_LABEL.get(k, k), (v or {}).get("score", 0))
-                   for k, v in rubric.items() if k != "method"),
-                  key=lambda x: -x[1])[:2]
-    og_desc = (" · ".join(f"{lb} {sc}" for lb, sc in top2) +
-               f" | {_fmt_tok(vol.get('total_tokens', 0))} 토큰 · "
-               f"{pack.get('cadence', {}).get('active_days', 0)}일 활동 — "
+    # OG 설명: 직접 만든 자산 요약 (사용량 숫자는 쓰지 않는다)
+    made = []
+    if authored:
+        made.append(f"커스텀 스킬 {len(authored)}종")
+    if mcp_servers:
+        made.append(f"MCP 서버 {len(mcp_servers)}개")
+    og_desc = ((" · ".join(made) + " 직접 제작·운영 — " if made else "") +
                "로컬 AI 사용 로그로 증명된 AI 활용 능력")
     og_url = f"https://aicv.tokenbill.my/r/{user.handle}"
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -535,14 +511,15 @@ ul{{padding-left:20px}} li{{margin:6px 0}}
  font-size:13px;color:#cdd6f4}}
 .pill em{{font-style:normal;color:#7aa2ff;margin-left:6px;font-size:12px}}
 .pill.mcp{{border-color:#3d3163;background:#221d33;color:#d8ccf4}}
+.asset-group{{margin:14px 0}}
+.asset-head{{margin-bottom:8px;font-size:14px}}
+.asset-head b{{color:#e6e8ee}}
+.asset-head span{{color:#8b90a0;margin-left:10px;font-size:13px}}
 footer{{margin-top:40px;color:#8b90a0;font-size:13px;border-top:1px solid #242b3d;padding-top:14px}}
 </style></head><body>
 <h1>{e(user.handle)} <small>의 AI 활용 능력</small></h1>
 <div class="badge">🔍 로컬 사용 로그 기반 · {e(win.get('from', ''))} ~ {e(win.get('to', ''))} · schema v{pack.get('schema_version', 1)}</div>
-<div class="stats">{stat_html}</div>
 {assets}
-<div class="sec"><h2>역량 프로파일 <small>(규칙 기반, 0~100)</small></h2>{bars}</div>
-{spark}
 {md}
 <div class="sec caveat"><h2>데이터 한계</h2><ul>{caveats}</ul></div>
 <footer>AICV — 실제 작업 로그가 역량을 증명합니다 · <a href="/">나도 만들기</a></footer>

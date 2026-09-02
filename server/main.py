@@ -62,6 +62,16 @@ class Evidence(Base):
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
 
+class PairCode(Base):
+    """기기 연결 코드 — 대시보드에서 발급, MCP가 토큰으로 교환 (10분, 1회용)."""
+    __tablename__ = "pair_codes"
+    id = Column(Integer, primary_key=True)
+    code = Column(String, unique=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False)
+
+
 class Resume(Base):
     __tablename__ = "resumes"
     id = Column(Integer, primary_key=True)
@@ -248,6 +258,42 @@ def update_me(body: MeIn, user: User = Depends(current_user), db: Session = Depe
         user.is_public = body.is_public
     db.commit()
     return {"handle": user.handle, "is_public": user.is_public}
+
+
+# ── 기기 연결 (연결 코드 → 토큰 교환) ───────────────────────
+# 사용자는 토큰을 볼 필요 없이 "aicv 연결해줘, 코드 XXXXXX" 한마디로 연결한다.
+PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # 혼동 문자(I·L·O·0·1) 제외
+
+
+class PairClaimIn(BaseModel):
+    code: str = Field(min_length=4, max_length=16)
+
+
+@app.post("/api/pair/start")
+def pair_start(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    # 이전 코드 무효화 후 새 코드 발급 (사용자당 활성 코드 1개)
+    db.query(PairCode).filter_by(user_id=user.id, used=False).update({"used": True})
+    code = "".join(secrets.choice(PAIR_ALPHABET) for _ in range(6))
+    while db.query(PairCode).filter_by(code=code, used=False).first():
+        code = "".join(secrets.choice(PAIR_ALPHABET) for _ in range(6))
+    db.add(PairCode(code=code, user_id=user.id,
+                    expires_at=datetime.utcnow() + timedelta(minutes=10)))
+    db.commit()
+    return {"code": code, "expires_in_sec": 600}
+
+
+@app.post("/api/pair/claim")
+def pair_claim(body: PairClaimIn, db: Session = Depends(get_db)):
+    row = db.query(PairCode).filter_by(code=body.code.strip().upper(), used=False).first()
+    if row is None or row.expires_at < datetime.utcnow():
+        raise HTTPException(400, "연결 코드가 유효하지 않거나 만료됐습니다 — 포탈에서 새 코드를 발급받으세요")
+    row.used = True
+    user = db.get(User, row.user_id)
+    if not user.upload_token:  # 기존 토큰이 있으면 유지 (다른 기기 연결이 안 끊기게)
+        user.upload_token = "acv_" + secrets.token_urlsafe(24)
+    db.commit()
+    return {"upload_token": user.upload_token, "handle": user.handle,
+            "visibility": "public" if (user.handle and user.is_public) else "private"}
 
 
 @app.post("/api/uploader/token")

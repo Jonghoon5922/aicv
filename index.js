@@ -29,7 +29,17 @@ function arg(name) {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
-const TOKEN = arg("--token") || process.env.AICV_TOKEN || "";
+const os = require("os");
+const CRED_PATH = path.join(os.homedir(), ".aicv", "credentials.json");
+function loadCredToken() {
+  try { return JSON.parse(fs.readFileSync(CRED_PATH, "utf8")).token || ""; } catch { return ""; }
+}
+function saveCredToken(token) {
+  fs.mkdirSync(path.dirname(CRED_PATH), { recursive: true });
+  fs.writeFileSync(CRED_PATH, JSON.stringify({ token, saved_at: new Date().toISOString() }), "utf8");
+}
+// 우선순위: --token > 환경변수 > 연결 코드로 저장된 자격증명
+let TOKEN = arg("--token") || process.env.AICV_TOKEN || loadCredToken();
 const SERVER = (arg("--server") || process.env.AICV_SERVER || "https://aicv.tokenbill.my").replace(/\/$/, "");
 
 function request(method, urlPath, body) {
@@ -150,6 +160,20 @@ const TOOLS = [
     },
   },
   {
+    name: "connect_aicv",
+    description:
+      "연결 코드로 이 기기를 AICV 포탈 계정에 연결합니다. 사용자가 포탈(" +
+      "aicv.tokenbill.my) 대시보드에서 발급받은 6자리 코드를 말하면 호출하세요. " +
+      "성공하면 토큰이 자동 저장되어 이후 publish_aicv가 바로 동작합니다.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        code: { type: "string", description: "포탈 대시보드에 표시된 연결 코드 (예: K7F3QZ)" },
+      },
+      required: ["code"],
+    },
+  },
+  {
     name: "publish_aicv",
     description:
       "증거 팩(자동 재수집)과 선택적으로 완성 이력서를 AICV 포탈에 업로드해 공개 프로필을 갱신합니다. " +
@@ -221,8 +245,22 @@ function runCollect(args) {
   return JSON.stringify(pack);
 }
 
+async function runConnect(args) {
+  const code = String((args && args.code) || "").trim().toUpperCase();
+  if (!code) return "연결 코드를 알려주세요 — 포탈(" + SERVER + ") 대시보드의 '연결 코드 발급'에서 확인할 수 있습니다.";
+  try {
+    const r = await request("POST", "/api/pair/claim", { code });
+    if (r.status !== 200) return "연결 실패 (HTTP " + r.status + (r.json.detail ? " — " + r.json.detail : "") + ")";
+    TOKEN = r.json.upload_token;
+    saveCredToken(TOKEN);
+    return "✅ 연결 완료 — 계정: " + (r.json.handle || "(핸들 미설정)") +
+      " · 프로필 " + (r.json.visibility === "public" ? "공개" : "비공개") + " 상태\n" +
+      "이제 \"포탈에 올려줘\"라고만 하면 됩니다.";
+  } catch (e) { return "연결 실패 (" + e.message + ")"; }
+}
+
 async function runPublish(args) {
-  if (!TOKEN) return "업로드 토큰이 없습니다 — 포탈(" + SERVER + ")에서 발급 후 --token 또는 AICV_TOKEN을 설정하세요.";
+  if (!TOKEN) return "아직 계정이 연결되지 않았습니다 — 포탈(" + SERVER + ") 대시보드에서 연결 코드를 발급받아 \"aicv 연결해줘, 코드 XXXXXX\"라고 말해주세요.";
   args = args || {};
   // 서버에는 항상 별칭 팩만 (reveal_projects 강제 해제)
   const pack = buildEvidence({ days: args.days, reveal_projects: false });
@@ -305,6 +343,7 @@ async function handle(msg) {
       if (name === "collect_ai_evidence") text = runCollect(args);
       else if (name === "save_ai_resume") text = runSave(args);
       else if (name === "publish_aicv") text = await runPublish(args);
+      else if (name === "connect_aicv") text = await runConnect(args);
       else return replyErr(id, -32602, "unknown tool: " + name);
     } catch (e) {
       return reply(id, { content: [{ type: "text", text: "오류: " + e.message }], isError: true });

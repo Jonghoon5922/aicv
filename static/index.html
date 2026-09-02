@@ -57,18 +57,23 @@ a{color:#7aa2ff}
 <!-- 대시보드 -->
 <div id="dash" class="hide">
   <div class="card">
-    <h3 style="margin-top:0">1. 업로드 토큰</h3>
-    <p class="mut">MCP가 증거 팩을 올릴 때 쓰는 열쇠입니다.</p>
-    <pre id="tokenBox">아직 발급 전</pre>
-    <button onclick="issueToken()">토큰 발급/재발급</button>
+    <h3 style="margin-top:0">1. MCP 설치</h3>
+    <div class="step"><b>①</b><span>레포 클론: <code>git clone https://github.com/Jonghoon5922/aicv</code></span></div>
+    <div class="step"><b>②</b><span>등록:</span></div>
+    <pre>claude mcp add aicv -- node &lt;클론 경로&gt;/index.js</pre>
   </div>
 
   <div class="card">
-    <h3 style="margin-top:0">2. MCP 연결</h3>
-    <div class="step"><b>①</b><span>레포 클론: <code>git clone https://github.com/Jonghoon5922/aicv</code></span></div>
-    <div class="step"><b>②</b><span>등록:</span></div>
-    <pre id="mcpCmd">claude mcp add aicv -- node &lt;클론 경로&gt;/index.js</pre>
-    <div class="step"><b>③</b><span>새 세션에서 <code>/aicv</code> — 이력서 생성 후 "포탈에 올려줘"</span></div>
+    <h3 style="margin-top:0">2. 계정 연결</h3>
+    <p class="mut">코드를 발급받아 Claude에게 이렇게 말하세요:
+    <code>"aicv 연결해줘, 코드 XXXXXX"</code> — 그럼 끝. 이후엔 "포탈에 올려줘"만 하면 됩니다.</p>
+    <pre id="pairBox" style="font-size:22px;letter-spacing:6px;text-align:center">──────</pre>
+    <button onclick="pairCode()">연결 코드 발급 (10분 유효)</button>
+    <details style="margin-top:12px"><summary class="mut" style="cursor:pointer">고급: 토큰 직접 등록</summary>
+      <pre id="tokenBox">아직 발급 전</pre>
+      <button class="ghost" onclick="issueToken()">토큰 발급/재발급</button>
+      <p class="mut">등록: <code id="mcpCmd">claude mcp add aicv -- node &lt;경로&gt;/index.js --token ...</code></p>
+    </details>
   </div>
 
   <div class="card">
@@ -160,6 +165,12 @@ function renderToken(t) {
 async function issueToken() {
   const j = await api("/api/uploader/token", {method: "POST"});
   renderToken(j.upload_token);
+}
+async function pairCode() {
+  try {
+    const j = await api("/api/pair/start", {method: "POST"});
+    $("pairBox").textContent = j.code;
+  } catch (e) { alert(e.message); }
 }
 async function saveMe() {
   try {

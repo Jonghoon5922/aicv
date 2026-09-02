@@ -438,6 +438,20 @@ def md_to_html(md: str) -> str:
     return "\n".join(out)
 
 
+@app.get("/api/resume")
+def get_resume(format: str | None = None, user: User = Depends(uploader_user),
+               db: Session = Depends(get_db)):
+    """현재 발행된 이력서 조회 — 부분 수정 후 재발행하는 흐름의 시작점."""
+    q = db.query(Resume).filter_by(user_id=user.id)
+    if format:
+        q = q.filter_by(format=format)
+    row = q.order_by(Resume.updated_at.desc()).first()
+    if row is None:
+        raise HTTPException(404, "발행된 이력서가 없습니다 — 먼저 이력서를 생성해 발행하세요")
+    return {"format": row.format, "markdown": row.markdown,
+            "updated_at": row.updated_at.isoformat()}
+
+
 # ── 공개 프로필 ─────────────────────────────────────────────
 RUBRIC_LABEL = {
     "verification": "검증 습관", "context_design": "컨텍스트 설계",

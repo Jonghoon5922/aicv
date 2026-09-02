@@ -160,6 +160,18 @@ const TOOLS = [
     },
   },
   {
+    name: "get_ai_resume",
+    description:
+      "포탈에 현재 발행되어 있는 이력서를 가져옵니다. 사용자가 이력서의 일부를 수정하고 싶어할 때 " +
+      "이 도구로 현재 본문을 가져와 요청된 부분만 고친 뒤 publish_aicv로 재발행하세요 — 처음부터 다시 쓰지 말 것.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        format: { type: "string", enum: ["full", "career", "skills", "github"], description: "특정 양식만 (생략 시 최근 발행본)" },
+      },
+    },
+  },
+  {
     name: "connect_aicv",
     description:
       "연결 코드로 이 기기를 AICV 포탈 계정에 연결합니다. 사용자가 포탈(" +
@@ -222,14 +234,17 @@ function promptText(format, days, language) {
   return [
     "AI 활용 능력 이력서를 작성해줘. 절차:",
     "",
-    "1. collect_ai_evidence 도구를 호출해 (days=" + (days || 90) + ") 증거 팩을 받아.",
-    "2. 증거 팩만을 근거로 " + (language || "한국어") + "로 아래 양식에 맞춰 작성해:",
+    "1. get_ai_resume로 기존 발행본이 있는지 먼저 확인해.",
+    "   - 있으면: 기존 본문을 기준으로 삼아, 새 증거 팩의 달라진 수치·자산만 갱신해 (사용자가 직접 다듬은 문장·사례를 함부로 갈아엎지 말 것).",
+    "   - 사용자가 특정 부분 수정을 요청한 거라면: 그 부분만 고치고 나머지는 그대로 유지해.",
+    "2. collect_ai_evidence 도구를 호출해 (days=" + (days || 90) + ") 증거 팩을 받아.",
+    "3. 증거 팩을 근거로 " + (language || "한국어") + "로 아래 양식에 맞춰 작성(또는 갱신)해:",
     f.guide,
-    "3. 공통 규칙:",
+    "4. 공통 규칙:",
     "   - 증거 팩에 없는 사실을 지어내지 마. 모든 주장에는 수치 근거를 붙여.",
     "   - 토큰량 자체보다 '어떻게 쓰는가'(확장·위임·검증 습관)를 강조해.",
     "   - highlights의 사실 카드를 우선 활용하고, growth가 있으면 성장 스토리로 연결해.",
-    "4. 사용자에게 초안을 보여주고, 확정되면 publish_aicv(format=\"" + (format || "full") + "\", markdown=초안, skill_groups=직접 만든 스킬 묶음)로 포탈에 바로 발행해.",
+    "5. 사용자에게 초안을 보여주고, 확정되면 publish_aicv(format=\"" + (format || "full") + "\", markdown=초안, skill_groups=직접 만든 스킬 묶음)로 포탈에 바로 발행해.",
     "   발행 결과의 프로필 상태(공개/비공개)를 사용자에게 그대로 전달해. 비공개면 아무도 못 보니 안심해도 된다고 알려줘.",
     "   로컬 파일 저장(save_ai_resume)은 사용자가 파일을 원할 때만.",
   ].join("\n");
@@ -243,6 +258,16 @@ function runCollect(args) {
       pack.volume.total_tokens.toLocaleString() + " tok, git 커밋 " +
       (pack.git.totals ? pack.git.totals.commits : 0) + "건)");
   return JSON.stringify(pack);
+}
+
+async function runGetResume(args) {
+  if (!TOKEN) return "아직 계정이 연결되지 않았습니다 — 포탈(" + SERVER + ")에서 연결 코드를 발급받아 연결하세요.";
+  const q = args && args.format ? "?format=" + args.format : "";
+  try {
+    const r = await request("GET", "/api/resume" + q);
+    if (r.status !== 200) return "조회 실패 (HTTP " + r.status + (r.json.detail ? " — " + r.json.detail : "") + ")";
+    return "현재 발행본 (" + r.json.format + ", " + r.json.updated_at.slice(0, 16).replace("T", " ") + " 갱신):\n\n" + r.json.markdown;
+  } catch (e) { return "조회 실패 (" + e.message + ")"; }
 }
 
 async function runConnect(args) {
@@ -344,6 +369,7 @@ async function handle(msg) {
       else if (name === "save_ai_resume") text = runSave(args);
       else if (name === "publish_aicv") text = await runPublish(args);
       else if (name === "connect_aicv") text = await runConnect(args);
+      else if (name === "get_ai_resume") text = await runGetResume(args);
       else return replyErr(id, -32602, "unknown tool: " + name);
     } catch (e) {
       return reply(id, { content: [{ type: "text", text: "오류: " + e.message }], isError: true });

@@ -317,6 +317,18 @@ def upload_evidence(pack: dict, user: User = Depends(uploader_user),
     date = ((pack.get("window") or {}).get("to") or "")[:10]
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
         raise HTTPException(400, "window.to 날짜가 올바르지 않습니다")
+    # skill_groups(스킬 묶음+설명)는 이력서 발행 때만 함께 오므로,
+    # 자동 동기화 팩에 없으면 마지막 팩의 것을 이어받는다 — 자산 섹션이 퇴화하지 않게.
+    if not (pack.get("extensions") or {}).get("skill_groups"):
+        prev = (db.query(Evidence).filter_by(user_id=user.id)
+                .order_by(Evidence.date.desc()).first())
+        if prev:
+            try:
+                prev_groups = (json.loads(prev.pack).get("extensions") or {}).get("skill_groups")
+                if prev_groups:
+                    pack.setdefault("extensions", {})["skill_groups"] = prev_groups
+            except Exception:
+                pass
     raw = json.dumps(pack, ensure_ascii=False)
     if len(raw) > 1_000_000:
         raise HTTPException(413, "팩이 너무 큽니다 (1MB 제한)")

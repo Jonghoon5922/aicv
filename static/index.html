@@ -61,6 +61,8 @@ a{color:#7aa2ff}
     <div class="step"><b>①</b><span>레포 클론: <code>git clone https://github.com/Jonghoon5922/aicv</code></span></div>
     <div class="step"><b>②</b><span>등록:</span></div>
     <pre>claude mcp add aicv -- node &lt;클론 경로&gt;/index.js</pre>
+    <p class="mut">Codex CLI는 <code>codex mcp add aicv -- node &lt;경로&gt;/index.js</code>,
+    Gemini CLI 등 MCP 지원 도구도 같은 방식으로 등록됩니다.</p>
   </div>
 
   <div class="card">
@@ -93,10 +95,10 @@ a{color:#7aa2ff}
 
 <div class="card">
   <h3 style="margin-top:0">어떻게 동작하나요?</h3>
-  <div class="step"><b>수집</b><span>MCP가 로컬 AI CLI 로그를 스캔 — 대화 원문 없이 집계값만</span></div>
-  <div class="step"><b>작성</b><span>Claude가 증거 팩을 근거로 이력서 문장 작성 (rubric 점수는 규칙 기반)</span></div>
-  <div class="step"><b>증명</b><span>공개 프로필 링크 하나로 공유 — 실행할 때마다 성장 델타 갱신</span></div>
-  <p class="mut">프라이버시: 실제 경로·원문이 포함된 팩은 서버가 거부합니다.
+  <div class="step"><b>수집</b><span>MCP가 내 PC의 AI CLI 사용 로그를 스캔 — 대화 원문 없이 집계값만 (직접 만든 스킬·기술 스택·활용 사례 후보)</span></div>
+  <div class="step"><b>작성</b><span>내가 쓰는 AI(Claude Code·Codex·Gemini CLI 등 MCP 지원 도구)가 그 증거를 근거로 이력서 초안을 쓰고, <b>내가 확인한 것만</b> 올라갑니다</span></div>
+  <div class="step"><b>증명</b><span>공개 프로필 링크 하나로 공유 — 이후 AI를 쓸 때마다 지표가 자동 갱신되고, 문장은 "고쳐줘" 한마디로 부분 수정</span></div>
+  <p class="mut">프라이버시: 대화 원문·실제 경로는 서버로 전송되지 않으며, 포함된 팩은 서버가 거부합니다.
   프로필은 기본 비공개입니다.</p>
 </div>
 

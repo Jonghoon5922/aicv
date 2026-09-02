@@ -1,66 +1,78 @@
-# AICV — AI 활용 능력 이력서 MCP
+# AICV — AI 활용 능력 이력서
 
-로컬 AI CLI 사용 로그(Claude Code·Codex·Gemini)를 스캔해 **증거 기반 AI 활용 능력 이력서**를 만듭니다.
-"많이 썼다"(리더보드)도 "시험 쳤다"(자격증)도 아닌, **실제 작업 로그가 역량을 증명**합니다.
+로컬 AI CLI 사용 로그(Claude Code·Codex·Gemini)를 근거로 **증거 기반 AI 활용 능력 이력서**를 만들고,
+공개 프로필로 유지합니다. "많이 썼다"(리더보드)도 "시험 쳤다"(자격증)도 아닌,
+**실제 작업 로그가 역량을 증명**합니다.
 
-## 동작 원리
+예시 프로필: https://aicv.tokenbill.my/r/jonghoon
 
-1. `collect_ai_evidence` — 로컬 로그를 스캔해 **증거 팩**(집계값·이름표만, 대화 원문 없음) 생성. 네트워크 접근 없음.
-2. 호스트 LLM(Claude Code 등)이 증거 팩을 근거로 이력서 문장을 작성 — 규칙 기반 rubric 점수는 인용만.
-3. `save_ai_resume` — 4가지 양식으로 저장:
-   - `full` 상세 리포트 · `career` 경력기술서 섹션 · `skills` 링크드인/원티드 스킬 목록 · `github` 프로필 README
-4. 실행할 때마다 `~/.aicv/history`에 스냅샷 저장 → 다음 실행에서 **성장 델타(growth)** 자동 산출.
-   한 번 쓰고 버리는 문서가 아니라 **지속 업데이트되는 이력서**입니다.
+## 시작하기 (3분)
 
-## 설치
+**1. MCP 설치**
 
 ```bash
-claude mcp add aicv -- node <이 레포 경로>/index.js
+git clone https://github.com/Jonghoon5922/aicv
+claude mcp add aicv -- node ./aicv/index.js
 ```
 
-새 세션에서 `/aicv` 프롬프트 또는 "AI 활용 이력서 만들어줘"라고 하면 됩니다.
+Codex CLI는 `codex mcp add aicv -- node ./aicv/index.js`, Gemini CLI 등 MCP 지원 도구도 같은 방식.
+
+**2. 계정 연결** — [aicv.tokenbill.my](https://aicv.tokenbill.my) 구글 로그인 → **연결 코드 발급** → 새 AI 세션에서:
+
+> "aicv 연결해줘, 코드 K7F3QZ"
+
+끝. 토큰이 자동 저장되고(`~/.aicv/credentials.json`), 프로필 주소도 자동 생성됩니다(기본 **비공개**).
+
+**3. 이력서 만들기** — `/aicv format=career` (또는 "AI 활용 이력서 만들어줘")
+
+초안을 확인하면 포탈에 바로 발행됩니다. 회사·고객사 이름은 익명화되며, 발행 전 반드시 초안을 확인하세요.
+
+**4. 공유** — 대시보드에서 **프로필 공개**를 켜면 `aicv.tokenbill.my/r/<내주소>` 링크로 누구나 볼 수 있습니다.
+이력서·링크드인에 이 링크 한 줄이면 됩니다.
+
+## 이후에는 (지속 업데이트)
+
+| 상황 | 하는 일 |
+|---|---|
+| 평소 | 없음 — AI를 쓸 때마다 프로필 지표(기간·자산·기술 스택)가 **자동 갱신** (6시간 간격) |
+| 문장 고치고 싶을 때 | "이력서에서 ○○ 부분 고쳐줘" — 발행본을 가져와 그 부분만 수정·재발행 |
+| 크게 갱신하고 싶을 때 | `/aicv` 재실행 — 기존 발행본 위에서 달라진 수치·자산만 갱신 (다듬은 문장은 보존) |
+
+## 출력 양식 4종
+
+`career`(경력기술서 섹션·기본 발행) · `skills`(링크드인/이력서 스킬 목록) ·
+`github`(프로필 README) · `full`(상세 리포트). `/aicv format=<양식>`으로 선택.
+
+작성 원칙(가이드에 내장): 활동량 숫자(호출·토큰량) 배제, **만든 것·산출물 수치만**,
+구체 사례는 STAR 압축형 + 고객사 익명화, 실제 링크 첨부.
 
 ## 수집 범위·프라이버시
 
 | 소스 | 경로 | 수준 |
 |---|---|---|
-| Claude Code | `~/.claude/projects/**/*.jsonl` 외 | 전체 (토큰·도구·스킬·확장·워크플로) |
-| Codex CLI | `~/.codex/sessions/` | 토큰·모델만 |
-| Gemini CLI | `~/.gemini/tmp/` | 토큰·모델만 |
-| git | 작업했던 로컬 레포 | 커밋 수·삽입/삭제 라인 (본인 작성 구분) |
+| Claude Code | `~/.claude/projects/**/*.jsonl` 외 | 전체 (도구·스킬·확장·사례 후보) |
+| Codex CLI | `~/.codex/sessions/` | 토큰·모델 |
+| Gemini CLI | `~/.gemini/tmp/` | 토큰·모델 |
 
-- 대화 원문·프롬프트·파일 내용은 **어떤 필드에도 담지 않습니다** (프롬프트는 평균 글자 수 통계만).
-- 프로젝트 경로는 기본 별칭+해시. `reveal_projects=true`로 명시 동의 시에만 실경로.
-- 계정 이메일은 해시만.
-
-## 포탈 (공개 프로필)
-
-포탈에 가입해 업로드 토큰을 발급받으면, 대화에서 "포탈에 올려줘"(`publish_aicv` 도구)로
-증거 팩·이력서가 업로드되고 `/r/<핸들>` 공개 프로필이 갱신됩니다.
-
-```bash
-claude mcp add aicv -- node <레포 경로>/index.js --token acv_...
-```
-
-- 로그인: 이메일/비밀번호 또는 구글 (`GOOGLE_CLIENT_ID` 설정 시, `AUTH_GOOGLE_ONLY=1` 지원)
-- 프로필은 기본 비공개 — 핸들 설정 후 공개 선택
-- 서버는 실경로 포함 팩을 거부합니다
-
-서버 실행: `pip install -r server/requirements.txt && uvicorn server.main:app --port 8100`
-(또는 Containerfile — main 푸시 시 ghcr.io 이미지 자동 빌드)
+- **대화 원문·프롬프트·파일 내용은 어떤 필드에도 담기지 않습니다** (집계값과 이름표만).
+- 세션 제목(사례 후보)은 **로컬 전용** — 발행 시 클라이언트·서버 양쪽에서 제거됩니다.
+- 프로젝트 경로는 별칭+해시. 실경로 포함 팩은 서버가 거부합니다.
+- 프로필은 기본 비공개, 발행할 때마다 공개/비공개 상태를 알려줍니다.
+- 이력서에 싣고 싶은 링크는 `~/.aicv/config.json`의 `links`에 등록.
 
 ## 문서
 
-- [증거 팩 스키마 v1](docs/SCHEMA.md) — 블록 구조·rubric 산식·버전 정책
-- [포탈 설계](docs/PORTAL.md) — 공개 프로필 페이지 (`/r/<핸들>`)
-- [생성 예시](examples/AICV.md)
+- [증거 팩 스키마 v1](docs/SCHEMA.md) — 블록 구조·버전 정책
+- [포탈 설계](docs/PORTAL.md)
+- [생성 예시](examples/AICV-career.md)
 
-## 예시 (rubric 5축, 규칙 기반 0~100)
+## 포탈 직접 운영하기
 
-| 축 | 의미 |
-|---|---|
-| verification | 실행·확인하며 진행하는 검증 습관 |
-| context_design | 프롬프트 충실도·장기 세션 운용 |
-| automation | 커스텀 스킬·훅·서브에이전트로 반복을 자산화 |
-| tooling_extension | MCP 구성·병렬 도구 호출 |
-| cost_efficiency | 모델 선택·출력 효율 |
+```bash
+pip install -r server/requirements.txt
+uvicorn server.main:app --port 8100
+```
+
+또는 Containerfile로 이미지 빌드 (main 푸시 시 ghcr.io 자동 빌드).
+환경변수: `SECRET_KEY`(필수), `GOOGLE_CLIENT_ID`·`AUTH_GOOGLE_ONLY`(선택 — tokenbill과 동일한 로그인 방식).
+자체 포탈을 쓰려면 MCP 등록 시 `--server https://내포탈` 추가.

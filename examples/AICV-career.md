@@ -6,4 +6,8 @@
 - **검증 중심 AI 개발**: AI 산출물을 실행·테스트로 확인하며 진행하는 워크플로 정착 — 3개월간 셸 실행 4,976회, 도구 실패율 2.6% 유지
 - **전 영역 적용**: Java 백엔드 중심으로 프론트·인프라·SQL·문서까지 16개 프로젝트에 적용, 3개월간 39억 토큰 규모 처리
 
-상세 사용 이력(자동 집계): https://aicv.tokenbill.my/r/jonghoon
+### 참고 링크
+
+- **AICV** — AI 활용 능력 이력서 자동화 MCP + 포탈 (직접 개발·운영): [github.com/Jonghoon5922/aicv](https://github.com/Jonghoon5922/aicv) · [aicv.tokenbill.my](https://aicv.tokenbill.my)
+- **Tokenbill** — AI 구독·API 비용 대시보드 (직접 개발·운영): [github.com/Jonghoon5922/tokenbill](https://github.com/Jonghoon5922/tokenbill) · [tokenbill.my](https://tokenbill.my)
+- 상세 사용 이력(자동 집계): [aicv.tokenbill.my/r/jonghoon](https://aicv.tokenbill.my/r/jonghoon)

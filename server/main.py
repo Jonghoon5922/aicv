@@ -155,6 +155,19 @@ def auth_config():
             "google_only": bool(AUTH_GOOGLE_ONLY and GOOGLE_CLIENT_ID)}
 
 
+def auto_handle(email: str, db: Session) -> str:
+    """이메일 앞부분으로 핸들 자동 생성 — 사용자는 공개/비공개만 결정하면 된다."""
+    base = re.sub(r"[^a-z0-9-]", "", email.split("@")[0].lower())[:24].strip("-") or "user"
+    if len(base) < 3:
+        base = (base + "-dev")[:24]
+    handle = base
+    n = 1
+    while handle in RESERVED or db.query(User).filter_by(handle=handle).first():
+        n += 1
+        handle = f"{base}{n}"
+    return handle
+
+
 @app.post("/api/auth/register")
 def register(body: RegisterIn, db: Session = Depends(get_db)):
     if AUTH_GOOGLE_ONLY and GOOGLE_CLIENT_ID:
@@ -162,6 +175,7 @@ def register(body: RegisterIn, db: Session = Depends(get_db)):
     if db.query(User).filter_by(email=body.email.lower()).first():
         raise HTTPException(409, "이미 가입된 이메일입니다")
     user = User(email=body.email.lower(), password_hash=hash_password(body.password))
+    user.handle = auto_handle(user.email, db)
     db.add(user)
     db.commit()
     return {"token": create_token(user.id)}
@@ -195,7 +209,9 @@ def google_login(body: GoogleAuthIn, db: Session = Depends(get_db)):
     if user is None:
         user = User(email=email)
         db.add(user)
-        db.commit()
+    if not user.handle:  # 기존 가입자도 로그인 시 자동 부여
+        user.handle = auto_handle(email, db)
+    db.commit()
     return {"token": create_token(user.id)}
 
 

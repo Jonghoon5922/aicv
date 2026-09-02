@@ -59,16 +59,20 @@ a{color:#7aa2ff}
   <div class="card">
     <h3 style="margin-top:0">1. MCP 설치</h3>
     <div class="step"><b>①</b><span>레포 클론: <code>git clone https://github.com/Jonghoon5922/aicv</code></span></div>
-    <div class="step"><b>②</b><span>등록:</span></div>
-    <pre>claude mcp add aicv -- node &lt;클론 경로&gt;/index.js</pre>
-    <p class="mut">Codex CLI는 <code>codex mcp add aicv -- node &lt;경로&gt;/index.js</code>,
-    Gemini CLI 등 MCP 지원 도구도 같은 방식으로 등록됩니다.</p>
+    <div class="step"><b>②</b><span>사용하는 AI 도구를 선택해 등록:</span></div>
+    <div style="margin:6px 0">
+      <button class="tool-tab" data-tool="claude" onclick="pickTool('claude')">Claude Code</button>
+      <button class="tool-tab ghost" data-tool="codex" onclick="pickTool('codex')">Codex CLI</button>
+      <button class="tool-tab ghost" data-tool="gemini" onclick="pickTool('gemini')">Gemini CLI</button>
+    </div>
+    <pre id="installCmd">claude mcp add aicv -- node &lt;클론 경로&gt;/index.js</pre>
+    <p class="mut">그 외 MCP 지원 도구(Cursor 등)도 stdio 서버 등록 방식으로 사용할 수 있습니다.</p>
   </div>
 
   <div class="card">
     <h3 style="margin-top:0">2. 계정 연결</h3>
-    <p class="mut">코드를 발급받아 Claude에게 이렇게 말하세요:
-    <code>"aicv 연결해줘, 코드 XXXXXX"</code> — 연결하면 이후 Claude Code를 쓸 때마다 프로필 지표가 자동 갱신되고, 이력서 문장은 "/aicv"로 원할 때만 다시 씁니다.</p>
+    <p class="mut">코드를 발급받아 AI에게 이렇게 말하세요:
+    <code>"aicv 연결해줘, 코드 XXXXXX"</code> — 연결하면 이후 AI를 쓸 때마다 프로필이 자동 갱신되고, 이력서 문장은 원할 때만 다시 씁니다.</p>
     <pre id="pairBox" style="font-size:22px;letter-spacing:6px;text-align:center">──────</pre>
     <button onclick="pairCode()">연결 코드 발급 (10분 유효)</button>
     <details style="margin-top:12px"><summary class="mut" style="cursor:pointer">고급: 토큰 직접 등록</summary>
@@ -168,6 +172,16 @@ function renderToken(t) {
 async function issueToken() {
   const j = await api("/api/uploader/token", {method: "POST"});
   renderToken(j.upload_token);
+}
+const INSTALL_CMDS = {
+  claude: "claude mcp add aicv -- node <클론 경로>/index.js",
+  codex:  "codex mcp add aicv -- node <클론 경로>/index.js",
+  gemini: "gemini mcp add aicv node <클론 경로>/index.js",
+};
+function pickTool(t) {
+  $("installCmd").textContent = INSTALL_CMDS[t];
+  document.querySelectorAll(".tool-tab").forEach(b =>
+    b.classList.toggle("ghost", b.dataset.tool !== t));
 }
 let handleTimer = null, myHandle = "";
 function checkHandle() {

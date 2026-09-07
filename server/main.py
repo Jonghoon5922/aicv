@@ -229,7 +229,7 @@ def google_login(body: GoogleAuthIn, db: Session = Depends(get_db)):
 
 # ── 내 계정 ─────────────────────────────────────────────────
 HANDLE_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$")
-RESERVED = {"api", "docs", "r", "admin", "static", "www", "aicv"}
+RESERVED = {"api", "docs", "r", "admin", "static", "www", "aicv", "privacy", "terms"}
 
 
 @app.get("/api/me")
@@ -262,6 +262,17 @@ def update_me(body: MeIn, user: User = Depends(current_user), db: Session = Depe
     return {"handle": user.handle, "is_public": user.is_public}
 
 
+@app.delete("/api/me")
+def delete_me(user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """계정 삭제 — 증거 팩·이력서·연결 코드 포함 전체 데이터를 즉시 삭제한다."""
+    db.query(Evidence).filter_by(user_id=user.id).delete()
+    db.query(Resume).filter_by(user_id=user.id).delete()
+    db.query(PairCode).filter_by(user_id=user.id).delete()
+    db.delete(user)
+    db.commit()
+    return {"ok": True, "message": "계정과 모든 데이터가 삭제되었습니다"}
+
+
 # ── 기기 연결 (연결 코드 → 토큰 교환) ───────────────────────
 # 사용자는 토큰을 볼 필요 없이 "aicv 연결해줘, 코드 XXXXXX" 한마디로 연결한다.
 PAIR_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # 혼동 문자(I·L·O·0·1) 제외
@@ -284,8 +295,27 @@ def pair_start(user: User = Depends(current_user), db: Session = Depends(get_db)
     return {"code": code, "expires_in_sec": 600}
 
 
+# 연결 코드 무차별 대입 방어: IP당 10분 창에 10회 시도 제한 (인메모리 — 단일 인스턴스 전제)
+_claim_attempts: dict[str, list[float]] = {}
+
+
+def _rate_limit_claim(ip: str):
+    import time
+    now = time.time()
+    window = [t for t in _claim_attempts.get(ip, []) if now - t < 600]
+    if len(window) >= 10:
+        raise HTTPException(429, "시도가 너무 많습니다 — 10분 후 다시 시도하세요")
+    window.append(now)
+    _claim_attempts[ip] = window
+    if len(_claim_attempts) > 10000:  # 메모리 상한
+        _claim_attempts.clear()
+
+
 @app.post("/api/pair/claim")
-def pair_claim(body: PairClaimIn, db: Session = Depends(get_db)):
+def pair_claim(body: PairClaimIn, request: Request, db: Session = Depends(get_db)):
+    ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip() or \
+         (request.client.host if request.client else "unknown")
+    _rate_limit_claim(ip)
     row = db.query(PairCode).filter_by(code=body.code.strip().upper(), used=False).first()
     if row is None or row.expires_at < datetime.utcnow():
         raise HTTPException(400, "연결 코드가 유효하지 않거나 만료됐습니다 — 포탈에서 새 코드를 발급받으세요")
@@ -712,3 +742,13 @@ footer{{margin-top:40px;color:#8b90a0;font-size:13px;border-top:1px solid #242b3
 @app.get("/", include_in_schema=False)
 def index():
     return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/privacy", include_in_schema=False)
+def privacy():
+    return FileResponse(STATIC_DIR / "privacy.html")
+
+
+@app.get("/terms", include_in_schema=False)
+def terms():
+    return FileResponse(STATIC_DIR / "terms.html")

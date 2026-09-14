@@ -1,3 +1,8 @@
+ > **📢 공지 (2026-09-14): AICV는 [Tokenbill](https://github.com/Jonghoon5922/tokenbill)의 기능으로 통합됩니다.**
+> AI 비용 대시보드와 AI 활용 이력서를 한 서비스에서 제공하기 위해 기능을 Tokenbill로 옮기는 중입니다.
+> 기존 설치(`npx -y github:Jonghoon5922/aicv`)와 프로필(aicv.tokenbill.my)은 이관이 끝날 때까지 그대로 동작하며,
+> 이후 안내는 [tokenbill.my](https://tokenbill.my)에서 확인하세요.
+
 # AICV — AI 활용 능력 이력서
 
 로컬 AI CLI 사용 로그(Claude Code·Codex·Gemini)를 근거로 **증거 기반 AI 활용 능력 이력서**를 만들고,
